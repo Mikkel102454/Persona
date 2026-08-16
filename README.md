@@ -12,6 +12,9 @@ The plugin is designed for server owners who want to build story-driven content 
 - Conditions based on quest state, items, flags, variables, permissions, worlds, and chance
 - Built-in effects for messages, titles, sounds, particles, items, entities, blocks, movement, and more
 - Citizens NPC bindings with conditional dialogue selection
+- Stable-ID YAML behavior trees with shared and per-player runtimes
+- Typed global and player/NPC memory with expiry and SQLite persistence
+- Viewer-private Citizens projections at named NPC anchors
 - Per-player progress persisted in SQLite
 - Atomic content reloads: invalid content is rejected while the previous registry remains active
 - A Java extension API for custom namespaced content types
@@ -37,6 +40,8 @@ Persona ships a small builder quest in `plugins/Persona/examples`. Copy these fi
 plugins/Persona/
 |-- npcs/
 |   `-- builder.yml
+|-- behaviors/
+|   `-- builder-routine.yml
 |-- dialogues/
 |   |-- builder.yml
 |   |-- builder_delivery.yml
@@ -54,6 +59,11 @@ Reload Persona, create or select an NPC with Citizens, and bind that selected NP
 
 Interacting with the NPC now selects the appropriate conversation based on the player's quest state.
 
+For a fuller behavior-tree example, copy `harbor_keeper.yml.example` plus the three
+`keeper-*.yml.example` behavior files. They demonstrate a shared patrol, private
+anchors and visibility, typed memory, named signals, logical travel, checkpoints,
+parallel nodes, retries, cooldowns, and a reusable subtree.
+
 ## Content layout
 
 Persona reads YAML from the following locations:
@@ -64,6 +74,7 @@ Persona reads YAML from the following locations:
 | `plugins/Persona/dialogues/*.yml` | Dialogue nodes, speech, choices, and flow |
 | `plugins/Persona/quests/*.yml` | Quests, phases, objectives, and lifecycle scripts |
 | `plugins/Persona/scripts.yml` | Reusable named scripts |
+| `plugins/Persona/behaviors/*.yml` | Shared and per-player NPC behavior trees |
 | `plugins/Persona/extensions/*.jar` | Optional standalone Persona extensions |
 
 IDs are namespaced, such as `village:builder` or `guild:adventurers_trial`. Script entries are executed in order and use lowercase kebab-case types:
@@ -96,6 +107,8 @@ For the complete schema, built-in commands and conditions, quest objective types
 | `/persona quests [page]` | List the player's active quests | `persona.player.quests` |
 | `/persona quest show <quest-id>` | Show quest and objective progress | `persona.player.quests` |
 | `/persona dialogue cancel` | Leave the current conversation | `persona.player.dialogue.cancel` |
+| `/persona npc info` | Inspect the selected NPC's behavior and presentation | `persona.admin.npc` |
+| `/persona memory ...` | Inspect or mutate selected-NPC memory | `persona.admin.memory` |
 | `/persona quest start <player> <quest-id>` | Start a quest for an online player | `persona.admin.quest` |
 | `/persona quest finish <player> <quest-id>` | Finish a quest for an online player | `persona.admin.quest` |
 | `/persona quest reset <player> <quest-id>` | Reset a quest for an online player | `persona.admin.quest` |

@@ -51,6 +51,8 @@ public final class PersonaApi {
     public boolean isInitialLoadComplete(){return initialLoadComplete;}
     public void initialLoadComplete(){initialLoadComplete=true;}
     public boolean reload(){return plugin.reloadPersona();}
+    public NpcMemoryService memories(){return plugin.memories();}
+    public void signal(net.citizensnpcs.api.npc.NPC npc,Player player,String name,Map<String,Object> data){plugin.behaviors().wake(npc,player,"signal:"+Objects.requireNonNull(name),data==null?Map.of():data);}
 
     public QuestService.Result startQuest(Player p,String id){return plugin.quests().start(p,id);}
     public QuestService.Result finishQuest(Player p,String id){return plugin.quests().finish(p,id);}
@@ -107,6 +109,7 @@ public final class PersonaApi {
         }
         public void condition(String n,ExpansionTypes.Condition h){add(ExpansionTypes.Condition.class,n,h);}public void command(String n,ExpansionTypes.Command h){add(ExpansionTypes.Command.class,n,h);}
         public void placeholder(String n,ExpansionTypes.Placeholder h){add(ExpansionTypes.Placeholder.class,n,h);}public void objective(String n,ExpansionTypes.Objective h){add(ExpansionTypes.Objective.class,n,h);}
+        public void behaviorCondition(String n,ExpansionTypes.BehaviorCondition h){add(ExpansionTypes.BehaviorCondition.class,n,h);}public void behaviorAction(String n,ExpansionTypes.BehaviorAction h){add(ExpansionTypes.BehaviorAction.class,n,h);}
         void rollback(){added.forEach(x->types.get(x.getKey()).remove(x.getValue()));}
     }
 }

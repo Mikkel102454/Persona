@@ -1,0 +1,52 @@
+# One runtime of this tree exists for each player viewing this logical NPC.
+id: harbor:keeper-player
+scope: player
+
+root:
+  id: personal-priorities
+  type: priority-selector
+  children:
+    # Named API signal: persona.api().signal(npc, player, "leave-town", Map.of())
+    - id: leave-town-reaction
+      type: sequence
+      children:
+        - { id: leave-town-signal, type: condition, condition: event, event: signal:leave-town }
+        - { id: remember-departure, type: action, action: remember, key: departed, value: true }
+
+    - id: departed-presentation
+      type: sequence
+      children:
+        - { id: departed-memory, type: condition, condition: memory, key: departed, value: true }
+        - { id: hide-keeper, type: action, action: set-visible, visible: false }
+
+    # Named API signal: persona.api().signal(npc, player, "kindness", Map.of())
+    - id: kindness-reaction
+      type: sequence
+      children:
+        - { id: kindness-signal, type: condition, condition: event, event: signal:kindness }
+        - id: kindness-cooldown
+          type: cooldown
+          duration: 10s
+          child:
+            id: increase-trust
+            type: action
+            action: adjust-memory
+            key: trust
+            amount: 1
+
+    - { id: festival-subtree, type: subtree, behavior: harbor:keeper-festival }
+
+    # At three trust points, only this player sees Mira at the overlook.
+    - id: trusted-presentation
+      type: sequence
+      children:
+        - id: trusted-memory
+          type: condition
+          condition: memory
+          key: trust
+          operator: greater-than-or-equal
+          value: 3
+        - { id: private-overlook, type: action, action: set-anchor, anchor: overlook }
+
+    # A missing anchor value means: inherit the shared actor again.
+    - { id: inherit-shared, type: action, action: set-anchor }

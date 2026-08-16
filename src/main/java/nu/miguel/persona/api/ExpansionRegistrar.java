@@ -5,4 +5,6 @@ public interface ExpansionRegistrar {
     void command(String name, ExpansionTypes.Command handler);
     void placeholder(String name, ExpansionTypes.Placeholder handler);
     void objective(String name, ExpansionTypes.Objective handler);
+    void behaviorCondition(String name, ExpansionTypes.BehaviorCondition handler);
+    void behaviorAction(String name, ExpansionTypes.BehaviorAction handler);
 }

@@ -163,3 +163,12 @@ registrar.command("play-sound", new ExpansionTypes.Command() {
 | extension action/effect/flow/reward registrations | one extension `command` registration |
 
 Persona does not translate 1.x content. Obsolete keys and `effects.yml` reject the entire atomic load with a migration message. Player flags, variables, quest progress storage, placeholders, `config.yml`, plugin manifests, and the SQLite schema are unchanged.
+# Behavior trees and NPC memory
+
+Behavior definitions live in `behaviors/*.yml`. Every tree and every node requires a stable lowercase ID. A tree has `scope: shared` or `scope: player`; NPC definitions attach them with `shared-behavior` and `player-behavior`. NPC anchors are named locations under `anchors`.
+
+Built-in composites are `sequence`, `selector`, `priority-selector`, and threshold-based `parallel`. Decorators are `invert`, `repeat`, `retry`, `timeout`, `cooldown`, and `checkpoint`; leaves are `condition`, `action`, `wait`, and `subtree`. Shared trees may only use player-independent conditions and actions. Reload is atomic, so a duplicate node ID, recursive subtree, missing anchor/reference, invalid threshold, or illegal scope leaves the active registry unchanged.
+
+Memory actions are `remember`, `adjust-memory`, and `forget`. Player trees default to player/NPC memory; use `scope: global` for global NPC memory. Values are available in scripts as `<memory:key>` and `<npc-memory:key>`. Persona-bound actors must not use independent Citizens player-filter traits because Persona owns their visibility.
+
+The editor compatibility contract is bundled at `schema/behaviors.schema.json`.

@@ -1,0 +1,24 @@
+# A non-recursive subtree reused by the player presentation tree.
+id: harbor:keeper-festival
+scope: player
+
+root:
+  id: festival-reaction
+  type: sequence
+  children:
+    - id: festival-signal
+      type: condition
+      condition: event
+      event: signal:festival-start
+    - id: remember-festival
+      type: action
+      action: remember
+      key: festival-seen
+      value-type: boolean
+      value: true
+      ttl: 2h
+    - id: travel-to-festival
+      type: action
+      action: logical-travel
+      destination: festival-square
+      duration: 15s

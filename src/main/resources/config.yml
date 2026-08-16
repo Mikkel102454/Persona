@@ -8,3 +8,15 @@ messages:
   phase-complete: "<green>Phase complete: <phase>"
   quest-complete: "<gold>Quest complete: <quest>"
   content-loading: "<yellow>Your Persona data is still loading. Try again shortly."
+behavior:
+  tick-cadence: 1
+  senses:
+    proximity-range: 16
+  scheduler:
+    node-evaluations: 5000
+    milliseconds: 4
+  projections:
+    per-player: 25
+    server: 500
+    activation-range: 48
+    suspend-seconds: 30

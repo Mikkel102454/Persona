@@ -7,21 +7,27 @@ import org.bukkit.entity.EntityType;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import nu.miguel.persona.behavior.BehaviorDefinition;
 
 /** Immutable, fully validated representation of Persona 2.0 YAML content. */
 public final class Content {
     private Content() {}
 
     public record Registry(Map<String,Npc> npcs, Map<String,Dialogue> dialogues,
-                           Map<String,Quest> quests, Map<String,List<Step>> scripts) {
-        public Registry(Map<String,Npc> npcs,Map<String,Dialogue> dialogues,Map<String,Quest> quests){this(npcs,dialogues,quests,Map.of());}
-        public static Registry empty(){return new Registry(Map.of(),Map.of(),Map.of(),Map.of());}
+                           Map<String,Quest> quests, Map<String,List<Step>> scripts,
+                           Map<String,BehaviorDefinition> behaviors) {
+        public Registry(Map<String,Npc> npcs,Map<String,Dialogue> dialogues,Map<String,Quest> quests){this(npcs,dialogues,quests,Map.of(),Map.of());}
+        public Registry(Map<String,Npc> npcs,Map<String,Dialogue> dialogues,Map<String,Quest> quests,Map<String,List<Step>> scripts){this(npcs,dialogues,quests,scripts,Map.of());}
+        public static Registry empty(){return new Registry(Map.of(),Map.of(),Map.of(),Map.of(),Map.of());}
     }
 
     public record Npc(String id,String displayName,List<DialogueRegistration> dialogues,
-                      List<Step> onInteract,List<Step> onNoDialogue) {
-        public Npc(String id,String displayName,List<DialogueRegistration> dialogues){this(id,displayName,dialogues,List.of(),List.of());}
+                      List<Step> onInteract,List<Step> onNoDialogue,
+                      Map<String,Anchor> anchors,String sharedBehavior,String playerBehavior) {
+        public Npc(String id,String displayName,List<DialogueRegistration> dialogues){this(id,displayName,dialogues,List.of(),List.of(),Map.of(),null,null);}
+        public Npc(String id,String displayName,List<DialogueRegistration> dialogues,List<Step> onInteract,List<Step> onNoDialogue){this(id,displayName,dialogues,onInteract,onNoDialogue,Map.of(),null,null);}
     }
+    public record Anchor(String world,double x,double y,double z,float yaw,float pitch) {}
     public record DialogueRegistration(String dialogueId,int priority,Condition condition) {}
     public record Dialogue(String id,String start,Map<String,Node> nodes) {}
     public record Node(String id,List<Step> script) {}

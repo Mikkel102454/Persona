@@ -29,6 +29,7 @@ import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import nu.miguel.persona.api.ExpansionTypes;
+import nu.miguel.persona.citizens.PersonaTrait;
 
 /** Executes all script-visible side effects. WAIT and SEQUENCE never block the server thread. */
 public final class EffectExecutor {
@@ -44,6 +45,8 @@ public final class EffectExecutor {
 
     private static final Pattern FLAG=Pattern.compile("<flag:([a-zA-Z0-9_.-]+)>");
     private static final Pattern VARIABLE=Pattern.compile("<variable:([a-zA-Z0-9_.-]+)>");
+    private static final Pattern MEMORY=Pattern.compile("<memory:([a-zA-Z0-9_.:-]+)>");
+    private static final Pattern NPC_MEMORY=Pattern.compile("<npc-memory:([a-zA-Z0-9_.:-]+)>");
     private static final Pattern EXTENSION_PLACEHOLDER=Pattern.compile("<([a-z0-9][a-z0-9_.-]*:[a-z0-9][a-z0-9_.-]*)(?::([^>]*))?>");
     private final Main plugin;
     private final MiniMessage mini=MiniMessage.miniMessage();
@@ -108,8 +111,10 @@ public final class EffectExecutor {
         PlayerState state=plugin.states().require(p);if(state==null)return value;
         value=replacePattern(value,FLAG,m->String.valueOf(state.flags().getOrDefault(m.group(1),false)));
         value=replacePattern(value,VARIABLE,m->state.variables().getOrDefault(m.group(1),""));
+        PersonaTrait trait=c.citizensNpc()==null?null:c.citizensNpc().getTraitNullable(PersonaTrait.class);if(trait!=null&&trait.bound()){String instance=trait.instanceId()==null?Objects.toString(trait.baseNpc(),c.citizensNpc().getUniqueId().toString()):trait.instanceId();value=replaceMemory(value,MEMORY,p.getUniqueId(),trait.definitionId(),instance);value=replaceMemory(value,NPC_MEMORY,null,trait.definitionId(),instance);}
         return replacePattern(value,EXTENSION_PLACEHOLDER,m->{String type=m.group(1);try{var handler=plugin.api().handler(ExpansionTypes.Placeholder.class,type);if(handler.isEmpty()){plugin.getLogger().warning("Placeholder "+type+" is unavailable");return "";}return handler.get().resolve(plugin.api().context(c,type),m.group(2)==null?"":m.group(2));}catch(RuntimeException e){plugin.getLogger().warning("Placeholder "+type+" failed: "+e.getMessage());return "";}});
     }
+    private String replaceMemory(String input,Pattern pattern,UUID player,String npc,String instance){return replacePattern(input,pattern,m->plugin.memories().get(player,npc,instance,m.group(1)).map(v->String.valueOf(v.value())).orElse(""));}
     private String replacePattern(String input,Pattern pattern,java.util.function.Function<Matcher,String> replacement){Matcher matcher=pattern.matcher(input);StringBuffer out=new StringBuffer();while(matcher.find())matcher.appendReplacement(out,Matcher.quoteReplacement(replacement.apply(matcher)));matcher.appendTail(out);return out.toString();}
     private Component text(String value,Context c){return mini.deserialize(replace(value,c));}private String plain(String value,Context c){return mini.stripTags(replace(value,c));}
 

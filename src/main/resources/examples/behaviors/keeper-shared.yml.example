@@ -1,0 +1,36 @@
+# A global routine controlling the manually bound Citizens actor.
+id: harbor:keeper-shared
+scope: shared
+
+root:
+  id: patrol-checkpoint
+  type: checkpoint
+  child:
+    id: patrol-route
+    type: sequence
+    children:
+      # Navigation is transient. On restart it begins again, while the checkpoint
+      # and absolute wait deadlines remain durable.
+      - id: reach-lighthouse
+        type: retry
+        times: 2
+        child:
+          id: navigate-lighthouse
+          type: action
+          action: navigate
+          anchor: lighthouse
+
+      # Parallel succeeds after both children succeed and fails after one failure.
+      - id: scan-horizon
+        type: parallel
+        success-threshold: 2
+        failure-threshold: 1
+        children:
+          - { id: scan-pause, type: wait, duration: 5s }
+          - { id: face-overlook, type: action, action: look, anchor: overlook }
+
+      - id: navigate-pier
+        type: action
+        action: navigate
+        anchor: pier
+      - { id: rest-at-pier, type: wait, duration: 20s }

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://persona.invalid/schema/behaviors.schema.json",
+  "title": "Persona behavior tree",
+  "type": "object",
+  "required": ["id", "scope", "root"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "$ref": "#/$defs/id" },
+    "scope": { "enum": ["shared", "player"] },
+    "root": { "$ref": "#/$defs/node" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.:-]*$" },
+    "anchor": {
+      "type": "object",
+      "required": ["world", "x", "y", "z"],
+      "properties": { "world": {"type":"string"}, "x": {"type":"number"}, "y": {"type":"number"}, "z": {"type":"number"}, "yaw": {"type":"number"}, "pitch": {"type":"number"} }
+    },
+    "npc-behaviors": {
+      "type": "object",
+      "properties": { "shared-behavior": {"$ref":"#/$defs/id"}, "player-behavior": {"$ref":"#/$defs/id"}, "anchors": {"type":"object", "additionalProperties":{"$ref":"#/$defs/anchor"}} }
+    },
+    "node": {
+      "type": "object",
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "type": { "enum": ["sequence", "selector", "priority-selector", "parallel", "invert", "repeat", "retry", "timeout", "cooldown", "checkpoint", "condition", "action", "wait", "subtree"] },
+        "children": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/node" } },
+        "child": { "$ref": "#/$defs/node" },
+        "behavior": { "$ref": "#/$defs/id" },
+        "condition": { "type": "string" },
+        "action": { "type": "string" },
+        "duration": { "oneOf": [{"type":"string"},{"type":"number","minimum":0}] },
+        "times": { "type": "integer", "minimum": 1 },
+        "success-threshold": { "type": "integer", "minimum": 1 },
+        "failure-threshold": { "type": "integer", "minimum": 1 },
+        "anchor": { "$ref": "#/$defs/id" }
+      },
+      "allOf": [
+        { "if": { "properties": { "type": { "enum": ["sequence", "selector", "priority-selector", "parallel"] } } }, "then": { "required": ["children"] } },
+        { "if": { "properties": { "type": { "enum": ["invert", "repeat", "retry", "timeout", "cooldown", "checkpoint"] } } }, "then": { "required": ["child"] } },
+        { "if": { "properties": { "type": { "const": "condition" } } }, "then": { "required": ["condition"] } },
+        { "if": { "properties": { "type": { "const": "action" } } }, "then": { "required": ["action"] } },
+        { "if": { "properties": { "type": { "const": "subtree" } } }, "then": { "required": ["behavior"] } }
+      ]
+    }
+  }
+}

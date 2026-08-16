@@ -1,5 +1,8 @@
 id: village:builder
 display-name: "<gold>Builder Rowan"
+player-behavior: persona:builder-routine
+anchors:
+  workshop: { world: world, x: 100, y: 64, z: 100, yaw: 180 }
 dialogues:
   - id: village:builder_intro
     priority: 100

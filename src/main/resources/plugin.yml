@@ -9,7 +9,7 @@ provides: [PersonaAPI]
 commands:
   persona:
     description: Persona dialogue and quest commands
-    usage: /persona <quests|quest|dialogue|npc|reload>
+    usage: /persona <quests|quest|dialogue|npc|memory|reload>
 permissions:
   persona.player.quests:
     default: true
@@ -20,4 +20,6 @@ permissions:
   persona.admin.quest:
     default: op
   persona.admin.reload:
+    default: op
+  persona.admin.memory:
     default: op

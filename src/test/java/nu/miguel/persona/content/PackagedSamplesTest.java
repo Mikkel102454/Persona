@@ -19,7 +19,7 @@ class PackagedSamplesTest {
     @TempDir Path temp;
     @Test void activeSamplesFormAValidGraphAndCoverEveryObjectiveType() throws Exception {
         Path examples=Path.of("src/main/resources/examples");
-        for(String directory:Set.of("npcs","dialogues","quests")){Files.createDirectories(temp.resolve(directory));try(var files=Files.list(examples.resolve(directory))){for(Path source:files.toList()){String name=source.getFileName().toString().replace(".example","");Files.copy(source,temp.resolve(directory).resolve(name));}}}
+        for(String directory:Set.of("npcs","dialogues","quests","behaviors")){Files.createDirectories(temp.resolve(directory));try(var files=Files.list(examples.resolve(directory))){for(Path source:files.toList()){String name=source.getFileName().toString().replace(".example","");Files.copy(source,temp.resolve(directory).resolve(name));}}}
         Files.copy(examples.resolve("scripts.yml.example"),temp.resolve("scripts.yml"));
         File content = temp.toFile();
         Content.Registry registry = new ContentLoader(content, Duration.ofSeconds(2),

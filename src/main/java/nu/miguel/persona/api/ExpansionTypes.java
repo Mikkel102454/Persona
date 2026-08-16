@@ -2,6 +2,7 @@ package nu.miguel.persona.api;
 
 import java.util.Map;
 import java.util.concurrent.CompletionStage;
+import nu.miguel.persona.behavior.BehaviorStatus;
 
 /** Persona 2.0 extension contracts. Commands are parsed at load and awaited at execution. */
 public final class ExpansionTypes {
@@ -23,4 +24,6 @@ public final class ExpansionTypes {
     public interface Command { default Map<String,Object> parse(Map<String,Object> yaml){return Map.copyOf(yaml);} default String validate(PersonaContext context,Map<String,Object> data){return null;} CompletionStage<CommandResult> execute(PersonaContext context,Map<String,Object> data); }
     public interface Placeholder { String resolve(PersonaContext context,String argument); }
     public interface Objective { ObjectiveDefinition parse(Map<String,Object> yaml); }
+    public interface BehaviorCondition { default Map<String,Object> parse(Map<String,Object> yaml){return Map.copyOf(yaml);} boolean test(BehaviorContext context,Map<String,Object> data); default Map<String,Object> schema(){return Map.of();} }
+    public interface BehaviorAction { default Map<String,Object> parse(Map<String,Object> yaml){return Map.copyOf(yaml);} CompletionStage<BehaviorStatus> execute(BehaviorContext context,Map<String,Object> data); default void cancel(BehaviorContext context){} default Map<String,Object> schema(){return Map.of();} }
 }
