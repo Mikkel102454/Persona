@@ -1,0 +1,11 @@
+id: guild:trial_complete
+start: congratulations
+nodes:
+  congratulations:
+    script:
+      - type: say
+        text: "You passed every part of the Adventurer's Trial."
+      - type: set-flag
+        flag: acknowledged_trial_master
+        value: true
+      - type: end-dialogue

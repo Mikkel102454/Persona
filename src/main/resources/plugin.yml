@@ -1,0 +1,23 @@
+name: Persona
+version: '${version}'
+
+main: nu.miguel.persona.Main
+api-version: '26.2'
+load: POSTWORLD
+depend: [Citizens]
+provides: [PersonaAPI]
+commands:
+  persona:
+    description: Persona dialogue and quest commands
+    usage: /persona <quests|quest|dialogue|npc|reload>
+permissions:
+  persona.player.quests:
+    default: true
+  persona.player.dialogue.cancel:
+    default: true
+  persona.admin.npc:
+    default: op
+  persona.admin.quest:
+    default: op
+  persona.admin.reload:
+    default: op

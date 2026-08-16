@@ -1,0 +1,10 @@
+dialogue:
+  default-line-delay: 2s
+  inactivity-timeout: 120s
+  maximum-distance: 8.0
+messages:
+  quest-started: "<green>Quest started: <white><quest>"
+  quest-progress: "<yellow><objective>: <current>/<required>"
+  phase-complete: "<green>Phase complete: <phase>"
+  quest-complete: "<gold>Quest complete: <quest>"
+  content-loading: "<yellow>Your Persona data is still loading. Try again shortly."

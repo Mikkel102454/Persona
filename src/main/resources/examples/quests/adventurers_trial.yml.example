@@ -1,0 +1,94 @@
+id: guild:adventurers_trial
+title: "The Adventurer's Trial"
+description: "Complete four trials to earn your place in the guild."
+on-start:
+  - type: play-sound
+    sound: minecraft:entity.experience_orb.pickup
+  - type: message
+    text: "<gold>The Adventurer's Trial has begun!"
+phases:
+  - id: preparation
+    title: "Preparation"
+    on-start:
+      - type: title
+        title: "<yellow>Phase I"
+        subtitle: "<white>Prepare yourself"
+    objectives:
+      - id: collect_bread
+        title: "Gather provisions"
+        type: collect-item
+        material: minecraft:bread
+        amount: 3
+        on-complete:
+          - type: play-sound
+            sound: minecraft:block.note_block.pling
+          - type: action-bar
+            text: "<green>Provisions secured!"
+    on-complete:
+      - type: message
+        text: "<green>Preparation complete. Combat comes next."
+      - type: give-experience
+        amount: 5
+  - id: combat-and-report
+    title: "Combat and Report"
+    objectives:
+      - id: defeat_zombies
+        type: kill-entity
+        entity: minecraft:zombie
+        amount: 2
+        on-progress:
+          every: 1
+          script:
+            - type: action-bar
+              text: "<yellow><current>/<required> zombies defeated"
+      - id: report_to_aria
+        type: talk-to-npc
+        npc: guild:trial_master
+        instance: trial-master
+    on-complete:
+      - type: give-experience
+        amount: 10
+  - id: exploration
+    title: "Exploration"
+    objectives:
+      - id: reach_trial_marker
+        type: go-to-location
+        location: { world: world, x: 10, y: 100, z: 0 }
+        radius: 2.5
+      - id: inspect_workbench
+        type: interact-block
+        location: { world: world, x: 12, y: 99, z: 0 }
+        material: minecraft:crafting_table
+    on-complete:
+      - type: give-experience
+        amount: 10
+  - id: endurance
+    title: "Endurance"
+    objectives:
+      - id: wait_patiently
+        type: wait
+        duration: 10s
+        hidden: true
+      - id: survive_trial
+        type: survive
+        duration: 30s
+    on-complete:
+      - type: set-flag
+        flag: endured_trial
+        value: true
+on-complete:
+  - type: give-item
+    material: minecraft:diamond
+    amount: 1
+  - type: give-experience
+    amount: 50
+  - type: set-flag
+    flag: adventurers_trial_complete
+    value: true
+  - type: title
+    title: "<gold>Trial Complete!"
+    subtitle: "<yellow>You are now an adventurer."
+  - type: run-script
+    script: quest-success
+  - type: broadcast
+    text: "<aqua><player> completed <quest-title>!"

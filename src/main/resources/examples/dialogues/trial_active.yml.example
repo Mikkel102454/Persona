@@ -1,0 +1,10 @@
+id: guild:trial_active
+start: report
+nodes:
+  report:
+    script:
+      - type: say
+        text: "Keep going, recruit. Check your quest details for the current trial."
+      - type: say
+        text: "Reporting to me also counts when the combat phase asks you to return."
+      - type: end-dialogue

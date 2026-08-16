@@ -1,0 +1,16 @@
+id: village:supplies
+title: "Building Supplies"
+phases:
+  - id: deliver-logs
+    objectives:
+      - id: oak_logs
+        type: deliver-item
+        material: minecraft:oak_log
+        amount: 10
+    on-complete:
+      - type: give-experience
+        amount: 25
+on-complete:
+  - type: set-flag
+    flag: helped_builder
+    value: true

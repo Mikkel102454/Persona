@@ -1,0 +1,17 @@
+# Copy to plugins/Persona/scripts.yml to enable reusable scripts.
+scripts:
+  quest-success:
+    - type: play-sound
+      sound: minecraft:ui.toast.challenge_complete
+    - type: particle
+      particle: minecraft:happy_villager
+      count: 20
+  dramatic-warning:
+    - type: play-sound
+      sound: minecraft:entity.warden.heartbeat
+      pitch: 0.7
+    - type: wait
+      duration: 1s
+    - type: title
+      title: "<red>Danger"
+      subtitle: "<gray>Prepare yourself"

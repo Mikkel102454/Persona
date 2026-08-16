@@ -1,0 +1,29 @@
+id: guild:trial_intro
+start: offer
+nodes:
+  offer:
+    script:
+      - type: play-sound
+        sound: minecraft:entity.villager.celebrate
+      - type: say
+        text: "Welcome, recruit. Are you ready for the Adventurer's Trial?"
+      - type: say
+        variants:
+          - { text: "Courage will carry you far.", weight: 2 }
+          - { text: "Keep your eyes open out there.", weight: 1 }
+      - type: choice
+        options:
+          - text: "I am ready."
+            script:
+              - type: start-quest
+                quest: guild:adventurers_trial
+              - type: goto
+                node: accepted
+          - text: "Maybe later."
+            script:
+              - type: end-dialogue
+  accepted:
+    script:
+      - type: say
+        text: "Begin by collecting three loaves of bread."
+      - type: end-dialogue

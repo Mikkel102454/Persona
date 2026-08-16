@@ -1,0 +1,27 @@
+id: village:builder_intro
+start: greeting
+nodes:
+  greeting:
+    script:
+      - type: say
+        text: "Hello there! I'm repairing the village workshop."
+        delay: 1.5s
+      - type: say
+        text: "Could you bring me ten oak logs?"
+      - type: choice
+        options:
+          - text: "Of course. I'll get the logs."
+            script:
+              - type: start-quest
+                quest: village:supplies
+                on-success:
+                  - type: goto
+                    node: accepted
+          - text: "I can't help right now."
+            script:
+              - type: end-dialogue
+  accepted:
+    script:
+      - type: say
+        text: "Thank you! Come back when you have all ten."
+      - type: end-dialogue

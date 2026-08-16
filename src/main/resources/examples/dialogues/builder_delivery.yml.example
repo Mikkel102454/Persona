@@ -1,0 +1,31 @@
+id: village:builder_delivery
+start: check-logs
+nodes:
+  check-logs:
+    script:
+      - type: say
+        text: "Let me see whether you brought ten oak logs."
+      - type: deliver-items
+        quest: village:supplies
+        objective: oak_logs
+        on-success:
+          - type: goto
+            node: delivered
+        on-failure:
+          - type: goto
+            node: missing
+  delivered:
+    script:
+      - type: say
+        text: "Perfect! These are exactly what I needed."
+      - type: give-item
+        material: minecraft:emerald
+        amount: 3
+      - type: say
+        text: "Take these emeralds for your trouble."
+      - type: end-dialogue
+  missing:
+    script:
+      - type: say
+        text: "You still need to bring me ten oak logs."
+      - type: end-dialogue

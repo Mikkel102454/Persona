@@ -1,0 +1,11 @@
+id: village:builder_thanks
+start: thanks
+nodes:
+  thanks:
+    script:
+      - type: say
+        text: "The workshop is coming along nicely. Thanks again!"
+      - type: set-flag
+        flag: thanked_builder
+        value: true
+      - type: end-dialogue

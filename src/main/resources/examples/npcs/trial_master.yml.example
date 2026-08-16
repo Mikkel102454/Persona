@@ -1,0 +1,12 @@
+id: guild:trial_master
+display-name: "<aqua>Trial Master Aria"
+dialogues:
+  - id: guild:trial_intro
+    priority: 100
+    when: { type: quest-state, quest: guild:adventurers_trial, state: not-started }
+  - id: guild:trial_active
+    priority: 100
+    when: { type: quest-state, quest: guild:adventurers_trial, state: active }
+  - id: guild:trial_complete
+    priority: 100
+    when: { type: quest-state, quest: guild:adventurers_trial, state: completed }

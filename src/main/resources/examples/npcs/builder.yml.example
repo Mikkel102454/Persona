@@ -1,0 +1,12 @@
+id: village:builder
+display-name: "<gold>Builder Rowan"
+dialogues:
+  - id: village:builder_intro
+    priority: 100
+    when: { type: quest-state, quest: village:supplies, state: not-started }
+  - id: village:builder_delivery
+    priority: 100
+    when: { type: quest-state, quest: village:supplies, state: active }
+  - id: village:builder_thanks
+    priority: 100
+    when: { type: quest-state, quest: village:supplies, state: completed }
