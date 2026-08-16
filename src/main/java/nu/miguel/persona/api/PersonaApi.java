@@ -63,6 +63,13 @@ public final class PersonaApi {
     public Optional<String> variable(Player p,String name){PlayerState s=plugin.states().require(p);return s==null?Optional.empty():Optional.ofNullable(s.variables().get(name));}
     public void variable(Player p,String name,String value){PlayerState s=requiredState(p);if(value==null)s.variables().remove(name);else s.variables().put(name,value);plugin.states().save(s);}
     public String resolvePlaceholders(Player p,String value){return plugin.effects().replace(value,EffectExecutor.Context.player(p));}
+    /** Resolves built-in and extension placeholders with the complete command context. */
+    public String resolvePlaceholders(PersonaContext c,String value){
+        Objects.requireNonNull(c,"context");
+        EffectExecutor.Context source=new EffectExecutor.Context(c.player(),c.npc().orElse(null),c.npcDefinition().orElse(null),
+                c.dialogue().orElse(null),c.quest().orElse(null),c.phase().orElse(null),c.objective().orElse(null),c.current(),c.required());
+        return plugin.effects().replace(value,source);
+    }
 
     public record ActiveObjective(String questId,String phaseId,String objectiveId,String type,long current,long required,Map<String,Object> options){}
     public <T> Optional<T> handler(Class<T> category,String raw){Entry<?> e=types.getOrDefault(category,Map.of()).get(canonical(raw));return e==null?Optional.empty():Optional.of(category.cast(e.handler));}
