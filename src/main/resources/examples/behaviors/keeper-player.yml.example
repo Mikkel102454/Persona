@@ -36,7 +36,16 @@ root:
 
     - { id: festival-subtree, type: subtree, behavior: harbor:keeper-festival }
 
-    # At three trust points, only this player sees Mira at the overlook.
+    # Once the walk completes, retain the private presentation without starting
+    # another navigation operation on every evaluation.
+    - id: arrived-overlook-presentation
+      type: sequence
+      children:
+        - { id: arrived-overlook-memory, type: condition, condition: memory, key: arrived-overlook, value: true }
+        - { id: retain-private-overlook, type: action, action: set-anchor, anchor: overlook }
+
+    # At three trust points, transition at the shared actor's exact current position,
+    # walk a viewer-private projection to the overlook, then remember completion.
     - id: trusted-presentation
       type: sequence
       children:
@@ -46,7 +55,21 @@ root:
           key: trust
           operator: greater-than-or-equal
           value: 3
-        - { id: private-overlook, type: action, action: set-anchor, anchor: overlook }
+        - { id: begin-private-overlook, type: action, action: begin-private-presentation }
+        - id: durable-private-walk
+          type: checkpoint
+          child:
+            id: private-overlook
+            type: action
+            action: private-navigate
+            destination: overlook
+            arrival-distance: 1.5
+            speed: 1.0
+            pathfinding-range: 64
+            stuck-seconds: 10
+            stuck-action: retry
+            stuck-retries: 2
+        - { id: remember-overlook-arrival, type: action, action: remember, key: arrived-overlook, value: true }
 
     # A missing anchor value means: inherit the shared actor again.
     - { id: inherit-shared, type: action, action: set-anchor }

@@ -2,6 +2,20 @@
 
 Persona 2.0 uses one ordered script language everywhere executable behavior is allowed. A script is a YAML list; every entry is a typed object whose `type` is lowercase kebab-case. Extension commands are namespaced, for example `assetchannel:play-sound`.
 
+## Content format compatibility
+
+Persona's YAML content format is version `1`. This version is independent of the
+plugin version (`2.0.0`), the Java extension API (`2.1`), the editor protocol, and the
+SQLite schema. A file may declare `content-version: 1` at its root. Existing files
+without that field are interpreted as format 1; a future or malformed version is
+rejected before activation. Persona will document migrations before incrementing the
+format version.
+
+Reload, command-line validation, and editor validation use the same `ContentValidator`
+and return diagnostics in `path:line:column: message` form. Unknown keys are rejected
+and include a likely replacement when one is close enough. Validation aggregates
+independent errors across behaviors, NPCs, dialogues, quests, and reusable scripts.
+
 ## Dialogue
 
 ```yaml
@@ -135,9 +149,18 @@ scripts:
 
 Invoke it with `{ type: run-script, script: celebration }`.
 
-## Extension API 2.0
+## Extension API 2.1
 
-Extensions require API `2.0` and register `command`, `condition`, `placeholder`, and `objective` types. A command parses YAML during atomic content loading, validates against `PersonaContext` immediately before mutation, and returns a `CompletionStage<CommandResult>`. Results may indicate success, a useful failure, node jump, dialogue transfer, dialogue end, or stop. Persona awaits the stage before advancing.
+Persona API 2.x evolves additively. The current level is `2.1`; previously compiled
+2.0 extensions remain accepted. An extension may request any published 2.x level up
+to the runtime's current level; a future minor is rejected rather than silently
+running without APIs it may require.
+Extensions register commands, conditions, placeholders, objectives, behavior
+conditions, and behavior actions. A command parses YAML during atomic content loading,
+validates against `PersonaContext` immediately before mutation, and returns a
+`CompletionStage<CommandResult>`. Results may indicate success, a useful failure, node
+jump, dialogue transfer, dialogue end, or stop. Persona awaits the stage before
+advancing.
 
 ```java
 registrar.command("play-sound", new ExpansionTypes.Command() {
@@ -148,6 +171,43 @@ registrar.command("play-sound", new ExpansionTypes.Command() {
     }
 });
 ```
+
+Behavior handlers can return `BehaviorNodeMetadata` from `metadata()` to declare
+shared/player scope support, event names that can wake the node, durable runtime field
+names and Java types, and a JSON Schema fragment. Persona applies the scope and schema
+during normal atomic loading. The same fragments are exposed by
+`PersonaApi.behaviorSchemas()` for CLI and hosted editor consumers. Durable values use
+`BehaviorContext.durable`; they are persisted transactionally with the runtime.
+
+Parsing, validation, condition evaluation, action start, and cancellation run on the
+Minecraft server thread. An action's `CompletionStage` may finish on any thread; the
+result is observed and advances the tree only on a later server-thread evaluation.
+`ExpansionServices.completeSync` is the supported way to perform a final Bukkit
+operation and complete safely on the server thread.
+
+API 2.1 passes a distinct `CancellationToken` to behavior actions. Its callbacks run
+exactly once. Persona also invokes the legacy `cancel(BehaviorContext)` callback at
+most once, on the server thread, so 2.0 actions retain their behavior. A reload,
+restart, branch interruption, timeout, or shutdown cancels the execution. See
+`ExampleBehaviorExpansion` in the published sources for a scoped condition and a
+cancellable asynchronous action.
+
+## Administration and support
+
+`/persona npc trace` shows behavior/tree identity, full running and checkpoint paths,
+deadlines, inbox event IDs, progress, redacted blackboard values, presentation state,
+and recent node outcomes. Failed selectors record all failed child IDs. Runtime
+controls are `/persona behavior pause|resume|restart|signal`; controls apply to the
+selected NPC's shared runtime and, for a player sender, that player's runtime.
+
+`/persona validate [--json]` and `/persona reload --dry-run [--json]` load the complete
+candidate with the production validator but never activate it. `/persona debug`
+accepts `npc=`, `player=`, `behavior=`, and `node=` filters; `/persona debug off`
+disables the filter. Slow handler timing uses `behavior.diagnostics.slow-milliseconds`.
+`/persona diagnostics` reports orphaned persisted rows and aggregate extension usage.
+`/persona support` creates a ZIP containing versions, redacted configuration,
+validation output, extension schemas, and runtime diagnostics without blackboard or
+memory values.
 
 ## Migration from 1.x
 
@@ -169,6 +229,133 @@ Behavior definitions live in `behaviors/*.yml`. Every tree and every node requir
 
 Built-in composites are `sequence`, `selector`, `priority-selector`, and threshold-based `parallel`. Decorators are `invert`, `repeat`, `retry`, `timeout`, `cooldown`, and `checkpoint`; leaves are `condition`, `action`, `wait`, and `subtree`. Shared trees may only use player-independent conditions and actions. Reload is atomic, so a duplicate node ID, recursive subtree, missing anchor/reference, invalid threshold, or illegal scope leaves the active registry unchanged.
 
+## Event delivery and execution semantics
+
+Every delivered event has a stable UUID, occurrence time, and an explicit policy:
+normal gameplay and named-signal events are `CONSUMABLE`; observation events created
+through the Java runtime API are `OBSERVE_ONLY`. Event conditions consume the oldest
+matching consumable event after a successful match by default. Set `consume: false`
+to observe it until its inbox TTL expires. This means one interaction cannot repeatedly
+trigger a successful branch on later ticks. Inbox order is FIFO even while an
+asynchronous action is running: arrivals queue in order, the action completes, and
+subsequent event conditions see the oldest relevant arrival. A full inbox drops its
+oldest entry; `/persona npc trace` exposes the cumulative dropped count.
+
+```yaml
+- id: clicked
+  type: condition
+  condition: event
+  event: interaction
+  consume: true
+```
+
+Quest-state, objective-progress, flag, variable, and NPC-memory mutations wake all
+relevant player runtimes. Proximity is measured from that player's active private
+presentation when one exists. Built-in events also include `navigation-success`,
+`navigation-failure`, `navigation-cancelled`, `spawn`, `despawn`, `world-change`,
+`projection-spawn`, `projection-despawn`, and `projection-lifecycle`. Administrators
+can send `/persona behavior signal <name>` to the selected Citizens NPC; content
+matches it as `signal:<name>`.
+
+`repeat` and `retry` execute at most one completed iteration per behavior tick, so an
+immediate child always yields before its next iteration. Use `forever: true` instead
+of `times` for an infinite form; specifying both is invalid. The per-tick yield and
+the global node/time budgets are its loop safeguards.
+
+Parallel children are evaluated in YAML order. If success and failure thresholds are
+both reached in one evaluation, success deterministically wins. `cancel-remaining`
+is `always` by default and may be `on-success`, `on-failure`, or `never`. Budget
+exhaustion returns `RUNNING` without allowing a reactive priority selector to replace
+its previously running branch. Runtime paths use `behavior-id/node-id` at every level,
+including subtree nodes, and traces expose the full running path plus redacted
+condition inputs and safe outputs. `behavior.tick-cadence` is the number of server
+ticks between scheduler evaluations.
+
 Memory actions are `remember`, `adjust-memory`, and `forget`. Player trees default to player/NPC memory; use `scope: global` for global NPC memory. Values are available in scripts as `<memory:key>` and `<npc-memory:key>`. Persona-bound actors must not use independent Citizens player-filter traits because Persona owns their visibility.
 
+Memory keys may use a namespace prefix such as `fishing:rank`. Each registered
+expansion automatically owns its identifier's namespace, and additional ownership can
+be declared under `memory.namespaces` in `config.yml`. Extension writes should use a
+source beginning with `extension:<identifier>/`; Persona rejects writes by one
+extension into another extension's claimed namespace. Existing unnamespaced keys stay
+compatible.
+
+The public `NpcMemoryService` supplies atomic compare-and-set, bounded numeric adjust,
+explicit expiry, and fully qualified entry enumeration. Every set, adjustment,
+conditional update, deletion, and expiry fires `NpcMemoryChangeEvent` on the server
+thread with typed old/new values, global/player scope, player UUID, NPC identity, key,
+and source. `memory.expiry.retention` controls how long physically expired rows remain
+in SQLite after they become invisible to reads; `memory.expiry.sweep-interval`
+controls cleanup cadence, and `/persona memory metrics` reports sweep totals.
+
+## Private presentation and walking
+
+Player-scoped trees can switch from the shared actor to a private projection without a visible teleport:
+
+```yaml
+- { id: become-private, type: action, action: begin-private-presentation }
+- id: walk-to-overlook
+  type: action
+  action: private-navigate
+  destination: overlook
+  arrival-distance: 1.5
+  speed: 1.0
+  pathfinding-range: 64
+  stuck-seconds: 10
+  stuck-action: fail
+```
+
+`begin-private-presentation` creates the projection at the shared actor's exact current position. `private-navigate` combines that transition with walking and durably selects the destination anchor. The projection's current logical world, coordinates, yaw, and pitch are persisted independently from the selected anchor, so reconnecting or restarting resumes from the last stored walking position.
+
+Navigation options inherit defaults from `behavior.navigation` in `config.yml`. `stuck-action` is `fail`, `retry`, or `teleport`; `stuck-retries` limits retries. Completion emits `navigation-success`, cancellation emits `navigation-cancelled`, and failures emit `navigation-failure` with a distinct `reason` value.
+
+When the viewer leaves activation range or changes world, private walking is suspended at its current logical position and its Citizens navigator is cancelled. It resumes when the viewer returns to that position's world and activation range. A missing or unloaded destination world fails the action with `destination-world-unavailable`; merely visiting another world does not fail or move the actor.
+
+Active projections follow Citizens-side presentation edits without being recreated
+unless the entity type changes. Persona synchronizes the raw name, skin, equipment,
+age/age-lock, pose, glowing state, protection and sneaking, plus these stable Citizens
+metadata keys: `collidable`, `flyable`, `fluid-pushable`, `glowing`,
+`nameplate-visible`, `silent-sounds`, `swim`, and `minecraft-ai`. Skin data is passed to
+Citizens in name, signature, texture order.
+
+Projection limits prefer nearby actors, recent interactions, active dialogue, active
+talk-to-NPC quest objectives, and private navigation. A higher-priority presentation
+can temporarily preempt a lower-priority one. `/persona npc info` reports the selected
+player's count and the server total. Limit and spawn failures are rate-limited in the
+server log with their cause. Do not add Citizens' `playerfilter` trait to a bound base
+actor: new bindings reject it and existing conflicts are reported clearly.
+
+`behavior.projections.transitions` controls owner-only spawn/despawn particles,
+sounds, and effect duration. `behavior.projections.debug.enabled` shows owner-only
+markers for the selected anchor and current logical/navigation position.
+
 The editor compatibility contract is bundled at `schema/behaviors.schema.json`.
+
+## Behavior runtime persistence and reload migration
+
+Wait, timeout, cooldown, and logical-travel timing uses absolute epoch deadlines, so
+server downtime does not extend a timer. A restored sleeping runtime remains out of
+the scheduler until its saved wake time or a relevant event wakes it. Logical travel
+stores its behavior/node owner, source, destination, start time, and duration as typed
+runtime columns; these values are not exposed as convention-based blackboard keys.
+
+Durable node keys contain both the behavior ID and node ID. This also applies to nodes
+inside reusable subtrees, allowing two subtrees to use the same local node IDs safely.
+On content reload, Persona applies these migration rules:
+
+- A persisted node survives only if the same behavior and node still exist and its
+  node kind is unchanged. Action and condition kinds include their native or extension
+  type, so changing `logical-travel` to another action discards the travel state.
+- Asynchronous action and navigation handles are transient and always restart. Valid
+  absolute wait/cooldown deadlines remain durable.
+- Checkpoint progress resumes only when the checkpoint still exists and the IDs,
+  kinds, order, and subtree structure below its child have the same fingerprint.
+- A removed, moved, or structurally changed active checkpoint restarts runtime node
+  progress and deadlines for that behavior tree. Its runtime blackboard is retained,
+  and NPC memories are never deleted by behavior migration.
+- Older rows without node-kind metadata are retained only when the complete behavior
+  tree hash is unchanged. Legacy checkpoints without a child fingerprint restart once
+  so future reloads can use the structural migration rules.
+
+See the README's database section for the supported online backup and corruption
+recovery procedure.

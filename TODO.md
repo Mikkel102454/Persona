@@ -21,21 +21,21 @@ backward compatible unless a migration is explicitly documented and tested.
 
 ### Private walking and presentation transitions
 
-- [ ] Add a native `begin-private-presentation` action that creates a projection at
+- [x] Add a native `begin-private-presentation` action that creates a projection at
       the shared actor's exact current position.
-- [ ] Add a combined `private-navigate` action that materializes, walks, persists the
+- [x] Add a combined `private-navigate` action that materializes, walks, persists the
       destination anchor, and handles failure as one cancellable operation.
-- [ ] Persist a projection's current logical position independently of its selected
+- [x] Persist a projection's current logical position independently of its selected
       named anchor.
-- [ ] Resume private navigation after projection suspension when the player returns.
-- [ ] Allow a private actor to walk across activation-boundary changes without being
+- [x] Resume private navigation after projection suspension when the player returns.
+- [x] Allow a private actor to walk across activation-boundary changes without being
       incorrectly suspended relative to its old anchor.
-- [ ] Decide and document behavior when the viewer changes world during navigation.
-- [ ] Add configurable arrival distance, speed, pathfinding range, and stuck handling.
-- [ ] Wake the behavior immediately for navigation success, cancellation, and each
+- [x] Decide and document behavior when the viewer changes world during navigation.
+- [x] Add configurable arrival distance, speed, pathfinding range, and stuck handling.
+- [x] Wake the behavior immediately for navigation success, cancellation, and each
       distinct failure reason.
-- [ ] Ensure reload and shutdown cancel every Citizens navigator and extension action.
-- [ ] Prevent an old asynchronous completion from modifying a newly reloaded runtime.
+- [x] Ensure reload and shutdown cancel every Citizens navigator and extension action.
+- [x] Prevent an old asynchronous completion from modifying a newly reloaded runtime.
 
 Acceptance criteria:
 
@@ -47,18 +47,18 @@ Acceptance criteria:
 
 ### Runtime persistence
 
-- [ ] Persist and restore the scheduler wake time rather than evaluating every restored
+- [x] Persist and restore the scheduler wake time rather than evaluating every restored
       runtime immediately.
-- [ ] Persist logical-travel source, destination, start time, and duration as typed
+- [x] Persist logical-travel source, destination, start time, and duration as typed
       runtime fields instead of convention-based blackboard entries.
-- [ ] Namespace runtime node state by behavior ID so subtree node IDs cannot collide.
-- [ ] Filter all removed or type-changed node state during reload migration.
-- [ ] Define migration rules for checkpoint nodes whose child structure changed.
-- [ ] Make runtime, blackboard, and checkpoint writes transactional per logical runtime.
-- [ ] Preserve offline player runtimes without rewriting the entire runtime table.
-- [ ] Add incremental dirty-row writes instead of delete-and-reinsert persistence.
-- [ ] Add database indexes and measure query plans with large memory/runtime datasets.
-- [ ] Add corruption recovery and a supported database backup procedure.
+- [x] Namespace runtime node state by behavior ID so subtree node IDs cannot collide.
+- [x] Filter all removed or type-changed node state during reload migration.
+- [x] Define migration rules for checkpoint nodes whose child structure changed.
+- [x] Make runtime, blackboard, and checkpoint writes transactional per logical runtime.
+- [x] Preserve offline player runtimes without rewriting the entire runtime table.
+- [x] Add incremental dirty-row writes instead of delete-and-reinsert persistence.
+- [x] Add database indexes and measure query plans with large memory/runtime datasets.
+- [x] Add corruption recovery and a supported database backup procedure.
 
 Acceptance criteria:
 
@@ -68,48 +68,48 @@ Acceptance criteria:
 
 ### Event delivery
 
-- [ ] Give every event a stable ID and explicit consumption policy.
-- [ ] Support `consume: true|false` on event conditions.
-- [ ] Prevent one interaction event from retriggering a successful branch every tick.
-- [ ] Wake trees when relevant quest state, objective progress, flags, variables, or
+- [x] Give every event a stable ID and explicit consumption policy.
+- [x] Support `consume: true|false` on event conditions.
+- [x] Prevent one interaction event from retriggering a successful branch every tick.
+- [x] Wake trees when relevant quest state, objective progress, flags, variables, or
       memories change.
-- [ ] Track proximity relative to the player's active private presentation, not only
+- [x] Track proximity relative to the player's active private presentation, not only
       the shared Citizens actor.
-- [ ] Add navigation, spawn, despawn, world-change, and projection lifecycle events.
-- [ ] Add an administrator command for sending named signals without a Java extension.
-- [ ] Document ordering when several events arrive during a running asynchronous leaf.
-- [ ] Expose dropped-event counters when an inbox reaches its configured bound.
+- [x] Add navigation, spawn, despawn, world-change, and projection lifecycle events.
+- [x] Add an administrator command for sending named signals without a Java extension.
+- [x] Document ordering when several events arrive during a running asynchronous leaf.
+- [x] Expose dropped-event counters when an inbox reaches its configured bound.
 
 ### Behavior semantics
 
-- [ ] Add exhaustive tests for every composite/decorator combination.
-- [ ] Define whether `repeat` and `retry` yield between immediate iterations.
-- [ ] Add optional infinite repeat with explicit safeguards and schema validation.
-- [ ] Define deterministic parallel completion when success and failure thresholds are
+- [x] Add exhaustive tests for every composite/decorator combination.
+- [x] Define whether `repeat` and `retry` yield between immediate iterations.
+- [x] Add optional infinite repeat with explicit safeguards and schema validation.
+- [x] Define deterministic parallel completion when success and failure thresholds are
       reached during the same evaluation.
-- [ ] Add configurable cancellation policies for parallel children.
-- [ ] Make subtree runtime paths include both behavior ID and node ID.
-- [ ] Expose the complete running path rather than only the running leaf.
-- [ ] Record condition inputs and safe redacted outputs in trace history.
-- [ ] Ensure budget exhaustion never causes a reactive selector to interrupt a branch.
-- [ ] Respect the configured behavior tick cadence.
+- [x] Add configurable cancellation policies for parallel children.
+- [x] Make subtree runtime paths include both behavior ID and node ID.
+- [x] Expose the complete running path rather than only the running leaf.
+- [x] Record condition inputs and safe redacted outputs in trace history.
+- [x] Ensure budget exhaustion never causes a reactive selector to interrupt a branch.
+- [x] Respect the configured behavior tick cadence.
 
 ## P0: Content validation and compatibility
 
-- [ ] Validate every built-in behavior option, type, range, and required combination.
-- [ ] Reject unknown keys with a suggested replacement when possible.
-- [ ] Validate `source`, `destination`, and every other anchor-bearing option.
-- [ ] Reuse the normal Persona condition and command parsers inside behavior leaves so
+- [x] Validate every built-in behavior option, type, range, and required combination.
+- [x] Reject unknown keys with a suggested replacement when possible.
+- [x] Validate `source`, `destination`, and every other anchor-bearing option.
+- [x] Reuse the normal Persona condition and command parsers inside behavior leaves so
       validation and runtime semantics cannot drift apart.
-- [ ] Validate named scripts used by behavior actions during atomic content loading.
-- [ ] Validate extension node options using extension-provided schema metadata.
-- [ ] Detect conflicting behavior IDs across files with both source locations.
-- [ ] Include YAML line and column numbers in every validation error.
-- [ ] Aggregate independent behavior, NPC, dialogue, quest, and script errors into one
+- [x] Validate named scripts used by behavior actions during atomic content loading.
+- [x] Validate extension node options using extension-provided schema metadata.
+- [x] Detect conflicting behavior IDs across files with both source locations.
+- [x] Include YAML line and column numbers in every validation error.
+- [x] Aggregate independent behavior, NPC, dialogue, quest, and script errors into one
       reload report.
-- [ ] Add schema fixtures proving that all packaged examples remain valid.
-- [ ] Add migration tests from every released SQLite schema version.
-- [ ] Publish a documented content-format version independently of the plugin version.
+- [x] Add schema fixtures proving that all packaged examples remain valid.
+- [x] Add migration tests from every released SQLite schema version.
+- [x] Publish a documented content-format version independently of the plugin version.
 
 Acceptance criteria:
 
@@ -118,61 +118,61 @@ Acceptance criteria:
 
 ## P1: NPC presentation quality
 
-- [ ] Copy and update all supported presentation properties: entity type, name, skin,
+- [x] Copy and update all supported presentation properties: entity type, name, skin,
       equipment, age, pose, glowing state, and explicitly supported metadata.
-- [ ] Detect base presentation changes and synchronize active projections.
-- [ ] Confirm skin texture/signature ordering across supported Citizens versions.
-- [ ] Add smooth spawn/despawn options and configurable transition effects.
-- [ ] Add projection prioritization based on distance, recent interaction, dialogue,
+- [x] Detect base presentation changes and synchronize active projections.
+- [x] Confirm skin texture/signature ordering across supported Citizens versions.
+- [x] Add smooth spawn/despawn options and configurable transition effects.
+- [x] Add projection prioritization based on distance, recent interaction, dialogue,
       quest relevance, and navigation activity.
-- [ ] Add rate-limited projection-limit diagnostics with actionable reasons.
-- [ ] Expose current per-player and server-wide projection counts.
-- [ ] Prevent independently configured Citizens player filters on Persona-bound actors,
+- [x] Add rate-limited projection-limit diagnostics with actionable reasons.
+- [x] Expose current per-player and server-wide projection counts.
+- [x] Prevent independently configured Citizens player filters on Persona-bound actors,
       or detect and report them clearly.
-- [ ] Test clicks, dialogue, damage, and selection routing for projections.
-- [ ] Test two players seeing one logical NPC at different anchors simultaneously.
-- [ ] Add optional debug particles or markers for anchors and navigation destinations.
+- [x] Test clicks, dialogue, damage, and selection routing for projections.
+- [x] Test two players seeing one logical NPC at different anchors simultaneously.
+- [x] Add optional debug particles or markers for anchors and navigation destinations.
 
 ## P1: Memory tools
 
-- [ ] Support selecting another online or offline player in memory admin commands.
-- [ ] Add `expire` and `list` commands with pagination and type/source metadata.
-- [ ] Add compare-and-set and bounded numeric adjustment operations.
-- [ ] Add memory-change events containing old value, new value, scope, and source.
-- [ ] Add configurable key namespaces and extension ownership.
-- [ ] Add memory import/export for debugging and server migration.
-- [ ] Add retention policies and metrics for expired-row database sweeps.
-- [ ] Add timestamp-friendly parsing such as `now`, ISO-8601, and durations from now.
-- [ ] Add privacy-safe inspection permissions for player-specific memories.
+- [x] Support selecting another online or offline player in memory admin commands.
+- [x] Add `expire` and `list` commands with pagination and type/source metadata.
+- [x] Add compare-and-set and bounded numeric adjustment operations.
+- [x] Add memory-change events containing old value, new value, scope, and source.
+- [x] Add configurable key namespaces and extension ownership.
+- [x] Add memory import/export for debugging and server migration.
+- [x] Add retention policies and metrics for expired-row database sweeps.
+- [x] Add timestamp-friendly parsing such as `now`, ISO-8601, and durations from now.
+- [x] Add privacy-safe inspection permissions for player-specific memories.
 
 ## P1: Administration and debugging
 
-- [ ] Expand `/persona npc trace` to show behavior ID, tree hash, full running path,
+- [x] Expand `/persona npc trace` to show behavior ID, tree hash, full running path,
       checkpoint path, deadlines, inbox, blackboard, and recent outcomes.
-- [ ] Explain why every selector branch failed.
-- [ ] Explain why a projection inherited, spawned, suspended, failed, or hit a limit.
-- [ ] Add `/persona behavior pause|resume|restart|signal` commands.
-- [ ] Add `/persona validate` without activating content.
-- [ ] Add `/persona reload --dry-run` and a machine-readable validation report.
-- [ ] Add scoped debug logging per NPC instance, player, behavior, or node.
-- [ ] Add timings for slow conditions/actions and per-extension runtime usage.
-- [ ] Add diagnostics for orphaned persisted runtimes and unknown NPC definitions.
-- [ ] Add a support bundle containing configuration, validation errors, schema versions,
+- [x] Explain why every selector branch failed.
+- [x] Explain why a projection inherited, spawned, suspended, failed, or hit a limit.
+- [x] Add `/persona behavior pause|resume|restart|signal` commands.
+- [x] Add `/persona validate` without activating content.
+- [x] Add `/persona reload --dry-run` and a machine-readable validation report.
+- [x] Add scoped debug logging per NPC instance, player, behavior, or node.
+- [x] Add timings for slow conditions/actions and per-extension runtime usage.
+- [x] Add diagnostics for orphaned persisted runtimes and unknown NPC definitions.
+- [x] Add a support bundle containing configuration, validation errors, schema versions,
       and redacted runtime diagnostics.
 
 ## P1: Extension API completion
 
-- [ ] Version the behavior extension API additively within API 2.x.
-- [ ] Add cancellation tokens and guarantee exactly one cancellation callback.
-- [ ] Define server-thread rules for parsing, conditions, action starts, completions, and
+- [x] Version the behavior extension API additively within API 2.x.
+- [x] Add cancellation tokens and guarantee exactly one cancellation callback.
+- [x] Define server-thread rules for parsing, conditions, action starts, completions, and
       cancellation.
-- [ ] Provide extension utilities for safely completing actions on the server thread.
-- [ ] Allow extensions to declare player/shared scope compatibility.
-- [ ] Allow extensions to declare wake events and durable runtime fields.
-- [ ] Publish JSON Schema fragments for extension nodes.
-- [ ] Merge extension schemas into the editor and CLI validator.
-- [ ] Add example extensions for a custom condition and cancellable asynchronous action.
-- [ ] Add binary/source compatibility tests for previously compiled 2.x extensions.
+- [x] Provide extension utilities for safely completing actions on the server thread.
+- [x] Allow extensions to declare player/shared scope compatibility.
+- [x] Allow extensions to declare wake events and durable runtime fields.
+- [x] Publish JSON Schema fragments for extension nodes.
+- [x] Merge extension schemas into the editor and CLI validator.
+- [x] Add example extensions for a custom condition and cancellable asynchronous action.
+- [x] Add binary/source compatibility tests for previously compiled 2.x extensions.
 
 ## P2: Visual editor
 

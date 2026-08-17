@@ -8,15 +8,52 @@ messages:
   phase-complete: "<green>Phase complete: <phase>"
   quest-complete: "<gold>Quest complete: <quest>"
   content-loading: "<yellow>Your Persona data is still loading. Try again shortly."
+memory:
+  expiry:
+    # Expired rows may be retained briefly for forensic database inspection. Reads
+    # still treat them as expired immediately.
+    retention: 0s
+    sweep-interval: 60s
+  # Optional ownership declarations. Extensions automatically own their identifier.
+  # A claimed prefix protects keys such as "example:trust" from other extensions.
+  namespaces: {}
 behavior:
+  diagnostics:
+    slow-milliseconds: 5.0
   tick-cadence: 1
   senses:
     proximity-range: 16
   scheduler:
     node-evaluations: 5000
     milliseconds: 4
+  navigation:
+    arrival-distance: 1.5
+    speed: 1.0
+    pathfinding-range: 64
+    stuck-seconds: 10
+    stuck-action: fail
+    stuck-retries: 1
   projections:
     per-player: 25
     server: 500
     activation-range: 48
     suspend-seconds: 30
+    # Repeated limit/filter/spawn diagnostics are collapsed to one log entry per key.
+    diagnostics-seconds: 30
+    transitions:
+      # Set either effect to "none" to disable it. Effects are sent only to the owner.
+      spawn-particle: minecraft:poof
+      despawn-particle: minecraft:poof
+      spawn-sound: none
+      despawn-sound: none
+      # Spread the effect over this period for a softer materialize/dematerialize.
+      duration-ticks: 8
+      particle-count: 12
+      volume: 0.7
+      pitch: 1.0
+    debug:
+      # Shows the selected anchor at ground level and the logical/navigation position
+      # one block higher, and only to the player who owns the presentation.
+      enabled: false
+      particle: minecraft:dust_plume
+      interval-ticks: 10

@@ -2,7 +2,7 @@
 
 Persona is a dialogue and quest engine for [Paper](https://papermc.io/) servers. It connects YAML-authored characters, conversations, and quests to [Citizens](https://citizensnpcs.co/) NPCs, while keeping player progress in a local SQLite database.
 
-The plugin is designed for server owners who want to build story-driven content without compiling a plugin for every quest. Developers can add new commands, conditions, placeholders, and objective types through the Persona 2.0 extension API.
+The plugin is designed for server owners who want to build story-driven content without compiling a plugin for every quest. Developers can add new commands, conditions, placeholders, and objective types through the additive Persona 2.x extension API.
 
 ## Features
 
@@ -108,7 +108,9 @@ For the complete schema, built-in commands and conditions, quest objective types
 | `/persona quest show <quest-id>` | Show quest and objective progress | `persona.player.quests` |
 | `/persona dialogue cancel` | Leave the current conversation | `persona.player.dialogue.cancel` |
 | `/persona npc info` | Inspect the selected NPC's behavior and presentation | `persona.admin.npc` |
-| `/persona memory ...` | Inspect or mutate selected-NPC memory | `persona.admin.memory` |
+| `/persona memory ...` | Inspect, mutate, or migrate selected-NPC memory | `persona.admin.memory` |
+| `/persona behavior signal <name>` | Send a named signal to the selected NPC runtimes | `persona.admin.behavior` |
+| `/persona backup` | Create a consistent online SQLite backup | `persona.admin.backup` |
 | `/persona quest start <player> <quest-id>` | Start a quest for an online player | `persona.admin.quest` |
 | `/persona quest finish <player> <quest-id>` | Finish a quest for an online player | `persona.admin.quest` |
 | `/persona quest reset <player> <quest-id>` | Reset a quest for an online player | `persona.admin.quest` |
@@ -118,6 +120,51 @@ For the complete schema, built-in commands and conditions, quest objective types
 | `/persona reload` | Atomically reload configuration and content | `persona.admin.reload` |
 
 Player permissions are granted by default. Administrative permissions default to server operators.
+
+Memory commands operate on the selected bound Citizens NPC. Player scope accepts an
+online/offline player name, UUID, or `self`; global scope omits the player argument:
+
+```text
+/persona memory get <global|player> [player] <key>
+/persona memory list <global|player> [player] [page]
+/persona memory set <global|player> [player] <key> <boolean|number|string|timestamp> <value> [expiry]
+/persona memory adjust <global|player> [player] <key> <amount> [minimum] [maximum] [expiry]
+/persona memory cas <global|player> [player] <key> <type> <expected|unset> <value> [expiry]
+/persona memory expire <global|player> [player] <key> <now|ISO-8601|duration>
+/persona memory delete <global|player> [player] <key>
+/persona memory export|import [file]
+/persona memory metrics
+```
+
+Durations such as `30s`, `10m`, and `2h` mean that far from now. Timestamp values and
+expiry accept `now` and ISO-8601 instants as well. Lists include type, source, update,
+and expiry metadata and show eight entries per page. Migration files are versioned
+YAML under `plugins/Persona/memory-transfer/`; imports overwrite matching identities.
+
+Player/global inspection, player/global mutation, and migration are separately
+controlled by `persona.admin.memory.inspect.*`, `persona.admin.memory.modify.*`, and
+`persona.admin.memory.migrate`. This prevents an administrator who may edit shared
+story state from automatically reading private player memories.
+
+## Database durability and backups
+
+Persona persists player state, NPC memories, and behavior runtimes in
+`plugins/Persona/persona.db`. Runtime flushes update only changed logical runtimes;
+offline player runtimes remain untouched. Runtime metadata, blackboard values, and
+checkpoint state for one NPC/player runtime are committed as one SQLite transaction.
+
+Run `/persona backup` from the console or as an authorized operator to create a
+consistent online backup under `plugins/Persona/backups/`. The command queues the
+backup after pending state flushes and uses SQLite's online `VACUUM INTO` facility, so
+the server does not need to stop. Keep copies of this directory outside the Minecraft
+host according to your normal retention policy. To restore, stop the server, move the
+current `persona.db` plus its `-wal` and `-shm` files out of the data directory, copy
+the chosen backup to `persona.db`, and start the server.
+
+Persona runs an integrity check when opening the database. If SQLite reports physical
+corruption, Persona moves the unreadable database and its sidecars to a timestamped
+`persona.db.corrupt-*` file before creating a fresh database. Do not delete that
+quarantined copy; restore a known-good backup or provide it to a SQLite recovery tool.
 
 ## Configuration
 
@@ -136,6 +183,11 @@ Durations accept values such as `500ms`, `2s`, and `1m`. Messages and authored t
 
 The Gradle wrapper handles the required Gradle version. A local Java 25 toolchain must be available.
 
+Persona currently publishes YAML content-format version `1`, independently of the
+plugin, Java API, editor protocol, and SQLite schema versions. See
+[`AUTHORING.md`](AUTHORING.md#content-format-compatibility) for the compatibility and
+validation contract.
+
 ```shell
 # Windows
 .\gradlew.bat build
@@ -152,6 +204,6 @@ The shaded plugin JAR is written to `build/libs/Persona-2.0.0.jar`. The developm
 
 ## Extensions
 
-Standalone extensions are loaded at server startup from `plugins/Persona/extensions`. Each extension JAR must contain a `persona-extension.yml` manifest and an implementation of `PersonaExpansion` targeting API version `2.0`. Extensions can register namespaced commands, conditions, placeholders, and objectives.
+Standalone extensions are loaded at server startup from `plugins/Persona/extensions`. Each extension JAR must contain a `persona-extension.yml` manifest and an implementation of `PersonaExpansion` targeting API version `2.x` (current: `2.1`). Extensions can register namespaced commands, conditions, placeholders, objectives, behavior conditions, and cancellable behavior actions. API evolution within 2.x is additive and previously compiled 2.0 extensions remain compatible.
 
 Persona also publishes a standard Java component and a shaded artifact through Gradle's `maven-publish` configuration for local or repository-based API consumption.

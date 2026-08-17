@@ -24,6 +24,7 @@ dependencies {
     testImplementation(platform("org.junit:junit-bom:5.13.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("io.papermc.paper:paper-api:26.2.build.+")
+    testImplementation("net.citizensnpcs:citizens-main:2.0.43-SNAPSHOT") { isTransitive = false }
     testImplementation("org.mockito:mockito-core:5.19.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }

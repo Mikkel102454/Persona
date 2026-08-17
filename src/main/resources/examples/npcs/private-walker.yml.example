@@ -1,0 +1,25 @@
+# Standalone private-walking demo.
+#
+# Setup:
+# 1. Copy this file to plugins/Persona/npcs/private-walker.yml.
+# 2. Change the destination coordinates below to a walkable location in your world.
+# 3. Create and select a Citizens NPC at the desired starting position.
+# 4. Run: /persona npc bind persona:private-walker demo-walker
+#
+# Each player gets an independent private projection. Other players continue to see
+# either their own projection or the shared Citizens actor.
+id: persona:private-walker
+display-name: "<aqua>Private Walker"
+player-behavior: persona:private-walker-demo
+
+anchors:
+  # Replace these example coordinates before using the sample.
+  destination: { world: world, x: 10, y: 64, z: 0, yaw: 90 }
+
+on-interact:
+  - type: message
+    text: "<gray>This actor walks privately for each player."
+
+on-no-dialogue:
+  - type: message
+    text: "<gray>Delete the demo-arrived player memory to run the walk again."

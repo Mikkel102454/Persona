@@ -26,7 +26,7 @@ public final class ConditionEvaluator {
         return false;
     }
 
-    private boolean compare(String actual,Comparison operator,String expected){
+    public static boolean compare(String actual,Comparison operator,String expected){
         if(operator==Comparison.EQUALS)return actual.equals(expected);
         if(operator==Comparison.NOT_EQUALS)return !actual.equals(expected);
         if(operator==Comparison.CONTAINS)return actual.contains(expected);

@@ -1,0 +1,61 @@
+# Standalone example of a durable shared-to-private walking transition.
+id: persona:private-walker-demo
+scope: player
+
+root:
+  id: private-walker-state
+  type: priority-selector
+  children:
+    # Once the walk succeeds, keep this player's presentation at the destination.
+    # set-anchor is idempotent, so evaluating this branch repeatedly does not respawn it.
+    - id: retain-arrived-presentation
+      type: sequence
+      children:
+        - id: already-arrived
+          type: condition
+          condition: memory
+          key: demo-arrived
+          value: true
+        - id: retain-destination
+          type: action
+          action: set-anchor
+          anchor: destination
+
+    # A player with no completion memory performs this branch once.
+    - id: walk-to-destination
+      type: sequence
+      children:
+        - id: has-not-arrived
+          type: invert
+          child:
+            id: arrival-memory
+            type: condition
+            condition: memory
+            key: demo-arrived
+            value: true
+
+        # The projection first appears at the shared Citizens actor's exact position.
+        - id: become-private
+          type: action
+          action: begin-private-presentation
+
+        # Checkpointing preserves the sequence position across reconnect or restart.
+        - id: durable-walk
+          type: checkpoint
+          child:
+            id: navigate-privately
+            type: action
+            action: private-navigate
+            destination: destination
+            arrival-distance: 1.5
+            speed: 1.0
+            pathfinding-range: 64
+            stuck-seconds: 10
+            stuck-action: retry
+            stuck-retries: 2
+
+        - id: remember-arrival
+          type: action
+          action: remember
+          key: demo-arrived
+          value: true

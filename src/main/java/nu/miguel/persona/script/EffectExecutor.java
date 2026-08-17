@@ -85,8 +85,8 @@ public final class EffectExecutor {
             case GIVE_ITEM->{Material m=material(string(o,"material",null));int amount=integer(o,"amount",1);Map<Integer,ItemStack> overflow=p.getInventory().addItem(new ItemStack(m,amount));overflow.values().forEach(i->p.getWorld().dropItemNaturally(p.getLocation(),i));}
             case TAKE_ITEM->take(p,material(string(o,"material",null)),integer(o,"amount",1));
             case GIVE_EXPERIENCE->p.giveExp(integer(o,"amount",1));
-            case SET_FLAG->{PlayerState s=state(p);s.flags().put(string(o,"flag",""),bool(o,"value",true));save(s);}
-            case SET_VARIABLE->{PlayerState s=state(p);applyVariable(s,string(o,"variable",string(o,"name","")),enumValue(VariableOperation.class,string(o,"operation","SET")),plain(string(o,"value",""),c));save(s);}
+            case SET_FLAG->{PlayerState s=state(p);String name=string(o,"flag","");boolean value=bool(o,"value",true);Boolean old=s.flags().put(name,value);save(s);plugin.behaviors().playerStateChanged(p,"flag-changed",Map.of("name",name,"old",old==null?false:old,"new",value));}
+            case SET_VARIABLE->{PlayerState s=state(p);String name=string(o,"variable",string(o,"name","")),old=s.variables().get(name);applyVariable(s,name,enumValue(VariableOperation.class,string(o,"operation","SET")),plain(string(o,"value",""),c));save(s);Map<String,Object> change=new LinkedHashMap<>();change.put("name",name);change.put("old",Objects.toString(old,"<unset>"));change.put("new",Objects.toString(s.variables().get(name),"<unset>"));plugin.behaviors().playerStateChanged(p,"variable-changed",change);}
             case RUN_COMMAND->{String command=plain(string(o,"command",""),c);if(string(o,"as","console").equalsIgnoreCase("player"))p.performCommand(stripSlash(command));else plugin.getServer().dispatchCommand(plugin.getServer().getConsoleSender(),stripSlash(command));}
             case TELEPORT->p.teleport(location(c,o));
             case LIGHTNING_EFFECT->location(c,o).getWorld().strikeLightningEffect(location(c,o));

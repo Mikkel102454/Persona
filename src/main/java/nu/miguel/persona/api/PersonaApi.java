@@ -19,7 +19,8 @@ import java.util.logging.Logger;
 
 /** Stable entry point for Persona extensions. Obtain it with {@link #get()}. */
 public final class PersonaApi {
-    public static final String API_VERSION="2.0";
+    /** Latest additive API level. All 2.x extensions remain accepted. */
+    public static final String API_VERSION="2.1";
     private static volatile PersonaApi instance;
     private final Main plugin;
     private final Map<String,PersonaExpansion> expansions=new LinkedHashMap<>();
@@ -36,13 +37,13 @@ public final class PersonaApi {
         if(!compatible(expansion.requiredApiVersion())||!expansion.canRegister())return false;
         if(expansions.containsKey(id))throw new IllegalArgumentException("duplicate expansion "+id);
         Registrar registrar=new Registrar(expansion,id);
-        try{expansion.contribute(registrar);expansion.attach(this);expansions.put(id,expansion);return true;}
+        try{expansion.contribute(registrar);expansion.attach(this);expansions.put(id,expansion);if(plugin.memories()!=null)plugin.memories().claimNamespace(id,id);return true;}
         catch(RuntimeException e){registrar.rollback();throw e;}
     }
     public synchronized void unregister(PersonaExpansion expansion){
         requirePrimaryThread();if(expansions.remove(namespace(expansion.identifier()))!=expansion)return;
         types.values().forEach(map->map.entrySet().removeIf(e->e.getValue().owner==expansion));
-        Resources owned=resources.remove(expansion);if(owned!=null)owned.close();
+        Resources owned=resources.remove(expansion);if(owned!=null)owned.close();if(plugin.memories()!=null)plugin.memories().releaseNamespaces(expansion.identifier());
     }
     public synchronized void unregister(Plugin owner){new ArrayList<>(expansions.values()).stream().filter(x->x.owner()==owner).toList().forEach(this::unregister);}
     public synchronized void shutdown(){new ArrayList<>(expansions.values()).forEach(this::unregister);if(instance==this)instance=null;}
@@ -61,9 +62,9 @@ public final class PersonaApi {
     public boolean incrementProgress(Player p,String quest,String objective,long amount){return plugin.quests().updateProgress(p,quest,objective,amount,true);}
     public boolean setProgress(Player p,String quest,String objective,long value){return plugin.quests().updateProgress(p,quest,objective,value,false);}
     public Optional<Boolean> flag(Player p,String name){PlayerState s=plugin.states().require(p);return s==null?Optional.empty():Optional.of(s.flags().getOrDefault(name,false));}
-    public void flag(Player p,String name,boolean value){PlayerState s=requiredState(p);s.flags().put(name,value);plugin.states().save(s);}
+    public void flag(Player p,String name,boolean value){PlayerState s=requiredState(p);Boolean old=s.flags().put(name,value);plugin.states().save(s);plugin.behaviors().playerStateChanged(p,"flag-changed",Map.of("name",name,"old",old==null?false:old,"new",value));}
     public Optional<String> variable(Player p,String name){PlayerState s=plugin.states().require(p);return s==null?Optional.empty():Optional.ofNullable(s.variables().get(name));}
-    public void variable(Player p,String name,String value){PlayerState s=requiredState(p);if(value==null)s.variables().remove(name);else s.variables().put(name,value);plugin.states().save(s);}
+    public void variable(Player p,String name,String value){PlayerState s=requiredState(p);String old=value==null?s.variables().remove(name):s.variables().put(name,value);plugin.states().save(s);plugin.behaviors().playerStateChanged(p,"variable-changed",Map.of("name",name,"old",Objects.toString(old,"<unset>"),"new",Objects.toString(value,"<unset>")));}
     public String resolvePlaceholders(Player p,String value){return plugin.effects().replace(value,EffectExecutor.Context.player(p));}
     /** Resolves built-in and extension placeholders with the complete command context. */
     public String resolvePlaceholders(PersonaContext c,String value){
@@ -76,16 +77,23 @@ public final class PersonaApi {
     public record ActiveObjective(String questId,String phaseId,String objectiveId,String type,long current,long required,Map<String,Object> options){}
     public <T> Optional<T> handler(Class<T> category,String raw){Entry<?> e=types.getOrDefault(category,Map.of()).get(canonical(raw));return e==null?Optional.empty():Optional.of(category.cast(e.handler));}
     public Set<String> registeredTypes(Class<?> category){return Set.copyOf(types.getOrDefault(category,Map.of()).keySet());}
+    /** JSON Schema fragments keyed by canonical extension behavior node type. */
+    public synchronized Map<String,Map<String,Object>> behaviorSchemas(){
+        Map<String,Map<String,Object>> result=new LinkedHashMap<>();
+        types.getOrDefault(ExpansionTypes.BehaviorCondition.class,Map.of()).forEach((name,e)->result.put("condition:"+name,((ExpansionTypes.BehaviorCondition)e.handler).metadata().schema()));
+        types.getOrDefault(ExpansionTypes.BehaviorAction.class,Map.of()).forEach((name,e)->result.put("action:"+name,((ExpansionTypes.BehaviorAction)e.handler).metadata().schema()));
+        return Collections.unmodifiableMap(result);
+    }
     public PersonaContext context(EffectExecutor.Context c,String type){
         Entry<?> entry=findEntry(type);PersonaExpansion owner=entry==null?expansions.get("persona"):entry.owner;
         File data=owner instanceof BuiltinExpansion?plugin.getDataFolder():new File(plugin.getDataFolder(),"extensions-data/"+owner.identifier());
-        return new PersonaContext(c.player(),Optional.ofNullable(c.citizensNpc()),Optional.ofNullable(c.npc()),Optional.ofNullable(c.dialogue()),Optional.ofNullable(c.quest()),Optional.ofNullable(c.phase()),Optional.ofNullable(c.objective()),c.current(),c.required(),this,logger(owner),data,services(owner));
+        return new PersonaContext(c.player(),Optional.ofNullable(c.citizensNpc()),Optional.ofNullable(c.npc()),Optional.ofNullable(c.dialogue()),Optional.ofNullable(c.quest()),Optional.ofNullable(c.phase()),Optional.ofNullable(c.objective()),c.current(),c.required(),this,logger(owner),data,servicesFor(owner));
     }
     private Entry<?> findEntry(String type){String key=canonical(type);for(Map<String,Entry<?>> map:types.values()){Entry<?> e=map.get(key);if(e!=null)return e;}return null;}
     private Logger logger(PersonaExpansion expansion){Plugin owner=expansion==null?null:expansion.owner();return owner==null?plugin.getLogger():owner.getLogger();}
-    private ExpansionServices services(PersonaExpansion expansion){Resources value=resources.computeIfAbsent(expansion,x->new Resources(expansion));return value;}
+    ExpansionServices servicesFor(PersonaExpansion expansion){return resources.computeIfAbsent(expansion,x->new Resources(expansion));}
     private PlayerState requiredState(Player p){PlayerState s=plugin.states().require(p);if(s==null)throw new IllegalStateException("player state is loading");return s;}
-    private boolean compatible(String requested){String major=requested==null?"":requested.split("\\.")[0];return major.equals(API_VERSION.split("\\.")[0]);}
+    private boolean compatible(String requested){try{String[] wanted=Objects.toString(requested,"").split("\\."),current=API_VERSION.split("\\.");return wanted.length>=2&&Integer.parseInt(wanted[0])==Integer.parseInt(current[0])&&Integer.parseInt(wanted[1])<=Integer.parseInt(current[1]);}catch(NumberFormatException e){return false;}}
     private static String namespace(String id){String value=Objects.requireNonNull(id,"identifier").toLowerCase(Locale.ROOT);if(!value.matches("[a-z0-9][a-z0-9_.-]*"))throw new IllegalArgumentException("invalid expansion identifier "+id);return value;}
     public static String canonical(String raw){String value=Objects.requireNonNull(raw,"type").toLowerCase(Locale.ROOT).replace('_','-');return value.contains(":")?value:"persona:"+value;}
     private void requirePrimaryThread(){if(Bukkit.getServer()!=null&&!Bukkit.isPrimaryThread())throw new IllegalStateException("expansions must register on the server thread");}

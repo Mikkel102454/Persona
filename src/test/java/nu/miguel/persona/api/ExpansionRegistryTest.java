@@ -4,7 +4,9 @@ import nu.miguel.persona.Main;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import nu.miguel.persona.behavior.BehaviorStatus;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
@@ -25,6 +27,28 @@ class ExpansionRegistryTest {
         assertThrows(IllegalArgumentException.class,()->api.register(expansion("Bad Namespace","1.0",r->{})));
         assertFalse(api.register(expansion("legacy","1.0",r->{})));
         assertThrows(IllegalArgumentException.class,()->api.register(expansion("persona","2.0",r->{})));
+        assertTrue(api.register(expansion("minor-old","2.0",r->{})));
+        assertTrue(api.register(expansion("minor-current","2.1",r->{})));
+        assertFalse(api.register(expansion("minor-future","2.9",r->{})));
+    }
+
+    @Test void publishesExtensionBehaviorSchemaMetadata(){
+        PersonaApi api=new PersonaApi(mock(Main.class));
+        assertTrue(api.register(expansion("weather","2.0",r->r.behaviorCondition("raining",new ExpansionTypes.BehaviorCondition(){
+            public boolean test(BehaviorContext context,Map<String,Object> data){return true;}
+            public BehaviorNodeMetadata metadata(){return new BehaviorNodeMetadata(Set.of(nu.miguel.persona.behavior.BehaviorScope.SHARED),Set.of("weather-change"),Map.of(),Map.of("type","object"));}
+        }))));
+        assertEquals("object",api.behaviorSchemas().get("condition:weather:raining").get("type"));
+    }
+
+    @Test void api20StyleBehaviorActionUsesAdditive21Defaults(){
+        // This class implements only the methods present in 2.0. Invoking the 2.1
+        // overload proves the additive default dispatch used by old class files.
+        ExpansionTypes.BehaviorAction oldStyle=new ExpansionTypes.BehaviorAction(){
+            public java.util.concurrent.CompletionStage<BehaviorStatus> execute(BehaviorContext context,Map<String,Object> data){return CompletableFuture.completedFuture(BehaviorStatus.SUCCESS);}
+        };
+        assertEquals(BehaviorStatus.SUCCESS,oldStyle.execute(null,Map.of(),new CancellationToken()).toCompletableFuture().join());
+        assertEquals(Set.of(nu.miguel.persona.behavior.BehaviorScope.SHARED,nu.miguel.persona.behavior.BehaviorScope.PLAYER),oldStyle.metadata().scopes());
     }
 
     @Test void builtinVocabularyUsesThePublicRegistry() {
