@@ -20,17 +20,18 @@ public final class ExpansionTypes {
         public static CommandResult stop(){return new CommandResult(Kind.STOP,null,null,null);}
     }
     @FunctionalInterface public interface Parser { Map<String,Object> parse(Map<String,Object> yaml); }
-    public interface Condition { default Map<String,Object> parse(Map<String,Object> yaml){return Map.copyOf(yaml);} boolean test(PersonaContext context,Map<String,Object> data); }
-    public interface Command { default Map<String,Object> parse(Map<String,Object> yaml){return Map.copyOf(yaml);} default String validate(PersonaContext context,Map<String,Object> data){return null;} CompletionStage<CommandResult> execute(PersonaContext context,Map<String,Object> data); }
-    public interface Placeholder { String resolve(PersonaContext context,String argument); }
-    public interface Objective { ObjectiveDefinition parse(Map<String,Object> yaml); }
-    public interface BehaviorCondition {
+    public interface Condition extends EditorSchemaProvider { default Map<String,Object> parse(Map<String,Object> yaml){return Map.copyOf(yaml);} boolean test(PersonaContext context,Map<String,Object> data); default Map<String,Object> editorSchema(){return Map.of();} }
+    public interface Command extends EditorSchemaProvider { default Map<String,Object> parse(Map<String,Object> yaml){return Map.copyOf(yaml);} default String validate(PersonaContext context,Map<String,Object> data){return null;} CompletionStage<CommandResult> execute(PersonaContext context,Map<String,Object> data); default Map<String,Object> editorSchema(){return Map.of();} }
+    public interface Placeholder extends EditorSchemaProvider { String resolve(PersonaContext context,String argument); default Map<String,Object> editorSchema(){return Map.of();} }
+    public interface Objective extends EditorSchemaProvider { ObjectiveDefinition parse(Map<String,Object> yaml); default Map<String,Object> editorSchema(){return Map.of();} }
+    public interface BehaviorCondition extends EditorSchemaProvider {
         default Map<String,Object> parse(Map<String,Object> yaml){return Map.copyOf(yaml);}
         boolean test(BehaviorContext context,Map<String,Object> data);
         default Map<String,Object> schema(){return Map.of();}
         default BehaviorNodeMetadata metadata(){return new BehaviorNodeMetadata(null,null,null,schema());}
+        default Map<String,Object> editorSchema(){return metadata().schema();}
     }
-    public interface BehaviorAction {
+    public interface BehaviorAction extends EditorSchemaProvider {
         default Map<String,Object> parse(Map<String,Object> yaml){return Map.copyOf(yaml);}
         CompletionStage<BehaviorStatus> execute(BehaviorContext context,Map<String,Object> data);
         /** API 2.1 entry point. The default preserves binary/source compatibility with 2.0. */
@@ -39,5 +40,6 @@ public final class ExpansionTypes {
         default void cancel(BehaviorContext context){}
         default Map<String,Object> schema(){return Map.of();}
         default BehaviorNodeMetadata metadata(){return new BehaviorNodeMetadata(null,null,null,schema());}
+        default Map<String,Object> editorSchema(){return metadata().schema();}
     }
 }

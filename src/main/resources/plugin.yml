@@ -9,7 +9,7 @@ provides: [PersonaAPI]
 commands:
   persona:
     description: Persona dialogue and quest commands
-    usage: /persona <quests|quest|dialogue|npc|memory|behavior|validate|debug|diagnostics|support|backup|reload>
+    usage: /persona <quests|quest|dialogue|npc|memory|behavior|editor|example|validate|debug|diagnostics|support|backup|reload>
 permissions:
   persona.player.quests:
     default: true
@@ -48,4 +48,25 @@ permissions:
   persona.admin.debug:
     default: op
   persona.admin.support:
+    default: op
+  persona.admin.editor.open:
+    description: Open a short-lived hosted Persona editor session
+    default: op
+  persona.admin.editor.view:
+    description: View Persona content in a hosted editor session
+    default: op
+  persona.admin.editor.drafts:
+    description: Edit and autosave isolated hosted Persona drafts
+    default: op
+  persona.admin.editor.players:
+    description: View scoped online-player and live NPC state in the hosted editor
+    default: op
+  persona.admin.editor.memories:
+    description: View permitted memory namespaces in the hosted editor
+    default: op
+  persona.admin.editor.publish:
+    description: Request content validation and publication from the hosted editor
+    default: op
+  persona.admin.editor.mutate:
+    description: Request typed live mutations from the hosted editor
     default: op

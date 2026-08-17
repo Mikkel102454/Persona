@@ -25,3 +25,4 @@ nodes:
       - type: say
         text: "Thank you! Come back when you have all ten."
       - type: end-dialogue
+# `start` names the first node; each node script is ordered and a bare script end closes the conversation.

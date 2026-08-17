@@ -20,11 +20,13 @@ import java.util.logging.Logger;
 /** Stable entry point for Persona extensions. Obtain it with {@link #get()}. */
 public final class PersonaApi {
     /** Latest additive API level. All 2.x extensions remain accepted. */
-    public static final String API_VERSION="2.1";
+    public static final String API_VERSION="2.2";
     private static volatile PersonaApi instance;
     private final Main plugin;
     private final Map<String,PersonaExpansion> expansions=new LinkedHashMap<>();
     private final Map<Class<?>,Map<String,Entry<?>>> types=new ConcurrentHashMap<>();
+    private final Map<String,SchemaEntry> editorSchemas=new LinkedHashMap<>();
+    private final Map<String,CatalogEntry> editorCatalogs=new LinkedHashMap<>();
     private final Map<PersonaExpansion,Resources> resources=new IdentityHashMap<>();
     private boolean initialLoadComplete;
 
@@ -43,6 +45,8 @@ public final class PersonaApi {
     public synchronized void unregister(PersonaExpansion expansion){
         requirePrimaryThread();if(expansions.remove(namespace(expansion.identifier()))!=expansion)return;
         types.values().forEach(map->map.entrySet().removeIf(e->e.getValue().owner==expansion));
+        editorSchemas.entrySet().removeIf(e->e.getValue().owner==expansion);
+        editorCatalogs.entrySet().removeIf(e->e.getValue().owner==expansion);
         Resources owned=resources.remove(expansion);if(owned!=null)owned.close();if(plugin.memories()!=null)plugin.memories().releaseNamespaces(expansion.identifier());
     }
     public synchronized void unregister(Plugin owner){new ArrayList<>(expansions.values()).stream().filter(x->x.owner()==owner).toList().forEach(this::unregister);}
@@ -84,6 +88,62 @@ public final class PersonaApi {
         types.getOrDefault(ExpansionTypes.BehaviorAction.class,Map.of()).forEach((name,e)->result.put("action:"+name,((ExpansionTypes.BehaviorAction)e.handler).metadata().schema()));
         return Collections.unmodifiableMap(result);
     }
+    /** Complete data-only schema inventory for built-in, extension, and future content types. */
+    public synchronized List<EditorSchemaDescriptor> editorSchemas(){
+        Map<String,EditorSchemaDescriptor> result=new TreeMap<>();
+        types.forEach((category,entries)->entries.forEach((id,entry)->{
+            if(entry.handler instanceof EditorSchemaProvider provider){String contentType=contentType(category);PersonaExpansion owner=entry.owner;
+                result.put(contentType+":"+id,new EditorSchemaDescriptor(contentType,id,owner.identifier(),owner.version(),provider.editorSchema()));}
+        }));
+        editorSchemas.forEach((key,entry)->result.put(key,new EditorSchemaDescriptor(entry.contentType,entry.typeId,
+                entry.owner.identifier(),entry.owner.version(),entry.provider.editorSchema())));
+        return List.copyOf(result.values());
+    }
+    public synchronized List<EditorCatalogDescriptor> editorCatalogs(){
+        return editorCatalogs.entrySet().stream().sorted(Map.Entry.comparingByKey()).map(entry->{CatalogEntry value=entry.getValue();
+            return new EditorCatalogDescriptor(entry.getKey(),value.owner.identifier(),value.owner.version(),value.provider.metadata());}).toList();
+    }
+    /** Invokes extension catalog code only on the Minecraft server thread and enforces its declared revision/bounds. */
+    public synchronized EditorCatalogProvider.CatalogPage queryEditorCatalog(String rawId,EditorCatalogProvider.CatalogQuery query){
+        requirePrimaryThread();CatalogEntry entry=editorCatalogs.get(canonical(rawId));if(entry==null)throw new IllegalArgumentException("unknown editor catalog "+rawId);
+        EditorCatalogProvider.CatalogMetadata metadata=entry.provider.metadata();
+        if(!metadata.dependencyFields().containsAll(query.dependencies().keySet()))throw new IllegalArgumentException("catalog query contains undeclared dependencies");
+        EditorCatalogProvider.CatalogPage page=Objects.requireNonNull(entry.provider.query(query),"catalog returned no page");
+        if(!metadata.revision().equals(page.revision())||page.page()!=query.page()||page.values().size()>query.pageSize())
+            throw new IllegalArgumentException("catalog returned a mismatched revision, page, or unbounded result");
+        return page;
+    }
+    /** Authoritative load/publish validation for extension schemas and live catalog references. */
+    public synchronized void validateEditorData(EditorSchemaProvider provider,Map<String,Object> value,String path){
+        Map<String,Object> schema=provider==null?Map.of():provider.editorSchema();
+        nu.miguel.persona.content.Validation.schema(schema,value,path);validateCatalogFields(schema,value,value,path);
+    }
+    private void validateCatalogFields(Map<?,?> schema,Object value,Map<String,Object> dependencies,String path){
+        Object catalog=schema.get(EditorSchemaAnnotations.CATALOG);
+        if(catalog instanceof String id&&!id.isBlank()){
+            CatalogEntry entry=editorCatalogs.get(canonical(id));if(entry==null)throw new IllegalArgumentException(path+" references unavailable catalog "+id);
+            Map<String,String> queryDependencies=new LinkedHashMap<>();for(String field:entry.provider.metadata().dependencyFields())if(dependencies.get(field)!=null)queryDependencies.put(field,String.valueOf(dependencies.get(field)));
+            Collection<?> selected=value instanceof Collection<?> values?values:List.of(value);for(Object raw:selected)validateCatalogValue(canonical(id),entry,String.valueOf(raw),queryDependencies,path);
+        }
+        if(value instanceof Map<?,?> map&&schema.get("properties") instanceof Map<?,?> properties)for(var item:map.entrySet()){
+            Object child=properties.get(item.getKey());if(child instanceof Map<?,?> rule)validateCatalogFields(rule,item.getValue(),stringObjectMap(map),path+"."+item.getKey());}
+        if(value instanceof Collection<?> values&&schema.get("items") instanceof Map<?,?> items){int index=0;for(Object item:values)validateCatalogFields(items,item,dependencies,path+"["+(index++)+"]");}
+        for(String combination:List.of("allOf","anyOf","oneOf"))if(schema.get(combination) instanceof Collection<?> choices)for(Object choice:choices)
+            if(choice instanceof Map<?,?> rule&&matchesSchema(rule,value,path))validateCatalogFields(rule,value,dependencies,path);
+    }
+    private void validateCatalogValue(String id,CatalogEntry entry,String selected,Map<String,String> dependencies,String path){
+        int page=0;boolean found=false,more;
+        do{EditorCatalogProvider.CatalogPage result=queryEditorCatalog(id,new EditorCatalogProvider.CatalogQuery(selected,page,200,dependencies));
+            found=result.values().stream().anyMatch(value->value.id().equals(selected)&&!value.deprecated());more=result.hasMore();page++;
+        }while(!found&&more&&page<20);
+        if(!found&&entry.provider.metadata().missingValuePolicy()==EditorCatalogProvider.MissingValuePolicy.REJECT)
+            throw new IllegalArgumentException(path+" value "+selected+" is unavailable in catalog "+id);
+        if(!found&&more)throw new IllegalArgumentException(path+" could not be verified against bounded catalog "+id);
+    }
+    private static Map<String,Object> stringObjectMap(Map<?,?> value){Map<String,Object> result=new LinkedHashMap<>();value.forEach((key,item)->result.put(String.valueOf(key),item));return result;}
+    @SuppressWarnings("unchecked")private static Map<String,Object> castSchema(Map<?,?> value){return (Map<String,Object>)value;}
+    private static boolean matchesSchema(Map<?,?> schema,Object value,String path){if(!(value instanceof Map<?,?> map))return true;
+        try{nu.miguel.persona.content.Validation.schema(castSchema(schema),stringObjectMap(map),path);return true;}catch(IllegalArgumentException ignored){return false;}}
     public PersonaContext context(EffectExecutor.Context c,String type){
         Entry<?> entry=findEntry(type);PersonaExpansion owner=entry==null?expansions.get("persona"):entry.owner;
         File data=owner instanceof BuiltinExpansion?plugin.getDataFolder():new File(plugin.getDataFolder(),"extensions-data/"+owner.identifier());
@@ -98,6 +158,14 @@ public final class PersonaApi {
     public static String canonical(String raw){String value=Objects.requireNonNull(raw,"type").toLowerCase(Locale.ROOT).replace('_','-');return value.contains(":")?value:"persona:"+value;}
     private void requirePrimaryThread(){if(Bukkit.getServer()!=null&&!Bukkit.isPrimaryThread())throw new IllegalStateException("expansions must register on the server thread");}
     private record Entry<T>(PersonaExpansion owner,T handler){}
+    private record SchemaEntry(PersonaExpansion owner,String contentType,String typeId,EditorSchemaProvider provider){}
+    private record CatalogEntry(PersonaExpansion owner,EditorCatalogProvider provider){}
+    private static String contentType(Class<?> category){
+        if(category==ExpansionTypes.Condition.class)return "condition";if(category==ExpansionTypes.Command.class)return "command";
+        if(category==ExpansionTypes.Placeholder.class)return "placeholder";if(category==ExpansionTypes.Objective.class)return "objective";
+        if(category==ExpansionTypes.BehaviorCondition.class)return "behavior-condition";if(category==ExpansionTypes.BehaviorAction.class)return "behavior-action";
+        return category.getSimpleName().toLowerCase(Locale.ROOT);
+    }
     private final class Resources implements ExpansionServices{
         private final Plugin schedulerOwner;private final List<Listener> listeners=new ArrayList<>();private final List<BukkitTask> tasks=new ArrayList<>();
         Resources(PersonaExpansion expansion){this.schedulerOwner=expansion!=null&&expansion.owner()!=null?expansion.owner():plugin;}
@@ -118,6 +186,14 @@ public final class PersonaApi {
         public void condition(String n,ExpansionTypes.Condition h){add(ExpansionTypes.Condition.class,n,h);}public void command(String n,ExpansionTypes.Command h){add(ExpansionTypes.Command.class,n,h);}
         public void placeholder(String n,ExpansionTypes.Placeholder h){add(ExpansionTypes.Placeholder.class,n,h);}public void objective(String n,ExpansionTypes.Objective h){add(ExpansionTypes.Objective.class,n,h);}
         public void behaviorCondition(String n,ExpansionTypes.BehaviorCondition h){add(ExpansionTypes.BehaviorCondition.class,n,h);}public void behaviorAction(String n,ExpansionTypes.BehaviorAction h){add(ExpansionTypes.BehaviorAction.class,n,h);}
-        void rollback(){added.forEach(x->types.get(x.getKey()).remove(x.getValue()));}
+        public void editorSchema(String contentType,String name,EditorSchemaProvider provider){
+            String kind=namespace(contentType),id=namespace+":"+namespace(name),key=kind+":"+id;
+            if(editorSchemas.putIfAbsent(key,new SchemaEntry(owner,kind,id,Objects.requireNonNull(provider)))!=null)throw new IllegalArgumentException("duplicate editor schema "+key);
+            addedSchemas.add(key);
+        }
+        public void editorCatalog(String name,EditorCatalogProvider provider){String id=namespace+":"+namespace(name);
+            if(editorCatalogs.putIfAbsent(id,new CatalogEntry(owner,Objects.requireNonNull(provider)))!=null)throw new IllegalArgumentException("duplicate editor catalog "+id);addedCatalogs.add(id);}
+        private final List<String> addedSchemas=new ArrayList<>(),addedCatalogs=new ArrayList<>();
+        void rollback(){added.forEach(x->types.get(x.getKey()).remove(x.getValue()));addedSchemas.forEach(editorSchemas::remove);addedCatalogs.forEach(editorCatalogs::remove);}
     }
 }

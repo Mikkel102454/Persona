@@ -29,6 +29,7 @@ class ExpansionRegistryTest {
         assertThrows(IllegalArgumentException.class,()->api.register(expansion("persona","2.0",r->{})));
         assertTrue(api.register(expansion("minor-old","2.0",r->{})));
         assertTrue(api.register(expansion("minor-current","2.1",r->{})));
+        assertTrue(api.register(expansion("minor-latest","2.2",r->{})));
         assertFalse(api.register(expansion("minor-future","2.9",r->{})));
     }
 
@@ -60,6 +61,56 @@ class ExpansionRegistryTest {
         assertTrue(api.registeredTypes(ExpansionTypes.Objective.class).contains("persona:survive"));
         assertTrue(api.registeredTypes(ExpansionTypes.Command.class).contains("persona:give-item"));
         assertTrue(api.registeredTypes(ExpansionTypes.Placeholder.class).contains("persona:variable"));
+    }
+
+    @Test void publishesTypedSchemasForEveryExtensionCategoryAndFutureTypes() {
+        PersonaApi api=new PersonaApi(mock(Main.class));
+        assertTrue(api.register(expansion("forms","2.2",r->{
+            r.command("announce",new ExpansionTypes.Command(){
+                public java.util.concurrent.CompletionStage<ExpansionTypes.CommandResult> execute(PersonaContext c,Map<String,Object> d){return CompletableFuture.completedFuture(ExpansionTypes.CommandResult.success());}
+                public Map<String,Object> editorSchema(){return Map.of("type","object","required",java.util.List.of("channel"),"properties",Map.of("channel",Map.of("type","string","enum",java.util.List.of("local","global"),EditorSchemaAnnotations.WIDGET,"radio-group")));}
+            });
+            r.editorSchema("future-widget","panel",()->Map.of("type","object",EditorSchemaAnnotations.ORDER,3));
+        })));
+        var schemas=api.editorSchemas();
+        assertEquals(Set.of("command:forms:announce","future-widget:forms:panel"),schemas.stream().map(x->x.contentType()+":"+x.typeId()).collect(java.util.stream.Collectors.toSet()));
+        assertEquals("1",schemas.getFirst().extensionVersion());
+        assertThrows(UnsupportedOperationException.class,()->schemas.stream().filter(x->x.contentType().equals("command")).findFirst().orElseThrow().schema().put("bad",true));
+    }
+
+    @Test void validatesPersonaSchemaAnnotations() {
+        PersonaApi api=new PersonaApi(mock(Main.class));
+        assertTrue(api.register(expansion("invalid","2.2",r->r.editorSchema("command","bad",()->Map.of(EditorSchemaAnnotations.WIDGET,"javascript-component")))));
+        assertThrows(IllegalArgumentException.class,api::editorSchemas);
+    }
+
+    @Test void catalogsAreNamespacedBoundedAndDependencyAware() {
+        PersonaApi api=new PersonaApi(mock(Main.class));
+        PersonaExpansion expansion=expansion("assets","2.2",r->r.editorCatalog("sounds",new EditorCatalogProvider(){
+            public CatalogMetadata metadata(){return new CatalogMetadata("rev-7",Map.of("type","string"),"persona.editor.assets",CachePolicy.REVISION,Set.of("namespace"),MissingValuePolicy.WARN);}
+            public CatalogPage query(CatalogQuery q){return new CatalogPage("rev-7",java.util.List.of(new CatalogValue("village:bell","Village bell","A bronze bell","village","BELL",false)),q.page(),false);}
+        }));
+        assertTrue(api.register(expansion));
+        assertEquals("assets:sounds",api.editorCatalogs().getFirst().catalogId());
+        var page=api.queryEditorCatalog("assets:sounds",new EditorCatalogProvider.CatalogQuery("bell",0,25,Map.of("namespace","village")));
+        assertEquals("village:bell",page.values().getFirst().id());
+        assertThrows(IllegalArgumentException.class,()->api.queryEditorCatalog("assets:sounds",new EditorCatalogProvider.CatalogQuery("",0,25,Map.of("world","nether"))));
+        expansion.unregister();
+        assertTrue(api.editorCatalogs().isEmpty());
+    }
+
+    @Test void catalogReferencesAreAuthoritativelyRevalidated() {
+        PersonaApi api=new PersonaApi(mock(Main.class));
+        assertTrue(api.register(expansion("assets","2.2",r->{
+            r.editorCatalog("items",new EditorCatalogProvider(){
+                public CatalogMetadata metadata(){return new CatalogMetadata("r1",Map.of("type","string"),"",CachePolicy.REVISION,Set.of("namespace"),MissingValuePolicy.REJECT);}
+                public CatalogPage query(CatalogQuery query){return new CatalogPage("r1",query.search().equals("village:bell")?java.util.List.of(new CatalogValue("village:bell","Bell","","","",false)):java.util.List.of(),query.page(),false);}
+            });
+            r.editorSchema("future","asset",()->Map.of("type","object","properties",Map.of("namespace",Map.of("type","string"),"asset-id",Map.of("type","string",EditorSchemaAnnotations.CATALOG,"assets:items"))));
+        })));
+        EditorSchemaProvider schema=()->api.editorSchemas().stream().filter(value->value.typeId().equals("assets:asset")).findFirst().orElseThrow().schema();
+        assertDoesNotThrow(()->api.validateEditorData(schema,Map.of("namespace","village","asset-id","village:bell"),"asset"));
+        assertThrows(IllegalArgumentException.class,()->api.validateEditorData(schema,Map.of("namespace","village","asset-id","village:missing"),"asset"));
     }
 
     private static PersonaExpansion expansion(String id,String apiVersion,java.util.function.Consumer<ExpansionRegistrar> registrations){

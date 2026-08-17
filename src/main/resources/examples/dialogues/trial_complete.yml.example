@@ -9,3 +9,4 @@ nodes:
         flag: acknowledged_trial_master
         value: true
       - type: end-dialogue
+# Completion dialogue is selected from persisted quest state and ends explicitly after its ordered script.

@@ -20,6 +20,9 @@ dependencies {
         isTransitive = false
     }
     implementation("org.xerial:sqlite-jdbc:3.50.3.0")
+    implementation("nu.miguel:protocol:1.0.0-SNAPSHOT")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.20.0")
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.20.0")
 
     testImplementation(platform("org.junit:junit-bom:5.13.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
@@ -34,7 +37,7 @@ java {
 }
 
 publishing {
-    publications { create<MavenPublication>("persona") { from(components["java"]); artifact(tasks.shadowJar) { classifier = "all" } } }
+    publications { create<MavenPublication>("persona") { from(components["java"]); artifact(tasks.shadowJar) { classifier = "all" }; artifact(tasks.register<Zip>("schemaArchive") { archiveClassifier.set("schemas"); from("src/main/resources/schema") }) } }
 }
 
 tasks {

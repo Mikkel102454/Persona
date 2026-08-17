@@ -10,3 +10,4 @@ root:
         - { id: helped-condition, type: condition, condition: memory, key: helped, value: true }
         - { id: workshop, type: action, action: set-anchor, anchor: workshop }
     - { id: inherit, type: action, action: set-anchor }
+# Player-scoped routine: quest/memory conditions require a player context; node IDs are durable reload keys.

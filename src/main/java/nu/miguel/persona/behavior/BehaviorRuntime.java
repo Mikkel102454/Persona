@@ -81,6 +81,7 @@ public final class BehaviorRuntime {
     public void restartTransient(){cancelRunning();}
     public void pause(){if(!paused){paused=true;cancelRunning();}}
     public void resume(){if(paused){paused=false;environment.wake();}}
+    public void wake(){environment.wake();}
     /** Restarts all behavior-owned state while retaining only presentation state. */
     public void restart(){cancelRunning();progress.clear();deadlines.clear();blackboard.clear();checkpoint=null;logicalTravel=null;wakeAt=0;inbox.clear();paused=false;environment.wake();}
     private void cancelRunning(){generation++;for(String key:new ArrayList<>(running.keySet())){NodeRef ref=findNode(key);if(ref!=null)environment.cancel(ref.behaviorId(),ref.node());}running.clear();runningLeaf=null;runningPath=List.of();}

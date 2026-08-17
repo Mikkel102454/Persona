@@ -27,3 +27,4 @@ nodes:
       - type: say
         text: "Begin by collecting three loaves of bread."
       - type: end-dialogue
+# Choices evaluate optional conditions at display time; each selected option runs its nested script once.

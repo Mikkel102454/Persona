@@ -8,6 +8,21 @@ messages:
   phase-complete: "<green>Phase complete: <phase>"
   quest-complete: "<gold>Quest complete: <quest>"
   content-loading: "<yellow>Your Persona data is still loading. Try again shortly."
+editor:
+  # Emergency kill switch. Read-only monitoring remains available when false.
+  live-mutations-enabled: false
+  # Memory values stay redacted unless their key is in one of these namespaces.
+  memory-visible-namespaces: []
+  enabled: false
+  # Publication additionally requires persona.admin.editor.publish, explicit session
+  # trust, a short-lived browser-generated confirmation code, and /persona editor apply.
+  publish-enabled: false
+  # The centrally hosted Spring Boot service. Production deployments must use HTTPS.
+  hosted-url: https://editor.persona.invalid
+  # Intended only for local development against localhost.
+  allow-insecure-transport: false
+  # Revoke sessions opened by a player when that player disconnects.
+  close-on-player-quit: true
 memory:
   expiry:
     # Expired rows may be retained briefly for forensic database inspection. Reads

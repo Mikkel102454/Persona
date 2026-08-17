@@ -21,12 +21,17 @@ import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import nu.miguel.persona.state.MemoryTimes;
 import nu.miguel.persona.state.MemoryTransfer;
+import nu.miguel.persona.editor.protocol.EditorScope;
+import nu.miguel.persona.editor.protocol.Capability;
+import nu.miguel.persona.editor.protocol.EditorSessionStatus;
+import nu.miguel.persona.editor.protocol.SessionRestrictions;
+import nu.miguel.persona.editor.EditorClient;
 
 public final class PersonaCommand implements CommandExecutor,TabCompleter {
     private final Main plugin;
     public PersonaCommand(Main plugin){this.plugin=plugin;}
     @Override public boolean onCommand(@NotNull CommandSender sender,@NotNull org.bukkit.command.Command command,@NotNull String label,String @NotNull [] args){
-        if(args.length==0){sender.sendMessage(Component.text("/persona quests | quest show | dialogue cancel | npc | memory | behavior | validate | debug | diagnostics | support | backup | reload"));return true;}
+        if(args.length==0){sender.sendMessage(Component.text("/persona quests | quest show | dialogue cancel | npc | memory | behavior | editor | validate | debug | diagnostics | support | backup | reload"));return true;}
         if(args[0].equals("_choose")&&sender instanceof Player p&&args.length==2){plugin.dialogues().choose(p,args[1]);return true;}
         if(args[0].equalsIgnoreCase("quests")&&sender instanceof Player p){if(!perm(sender,"persona.player.quests"))return true;quests(p,args);return true;}
         if(args[0].equalsIgnoreCase("quest")){return quest(sender,args);}
@@ -34,11 +39,13 @@ public final class PersonaCommand implements CommandExecutor,TabCompleter {
         if(args[0].equalsIgnoreCase("npc")){npc(sender,args);return true;}
         if(args[0].equalsIgnoreCase("memory")){memory(sender,args);return true;}
         if(args[0].equalsIgnoreCase("behavior")){behavior(sender,args);return true;}
+        if(args[0].equalsIgnoreCase("editor")){editor(sender,args);return true;}
         if(args[0].equalsIgnoreCase("validate")){validate(sender,args,false);return true;}
         if(args[0].equalsIgnoreCase("debug")){debug(sender,args);return true;}
         if(args[0].equalsIgnoreCase("diagnostics")){diagnostics(sender);return true;}
         if(args[0].equalsIgnoreCase("support")){support(sender);return true;}
         if(args[0].equalsIgnoreCase("backup")){backup(sender);return true;}
+        if(args[0].equalsIgnoreCase("example")){example(sender,args);return true;}
         if(args[0].equalsIgnoreCase("reload")){if(!perm(sender,"persona.admin.reload"))return true;if(Arrays.stream(args).anyMatch(x->x.equalsIgnoreCase("--dry-run"))){validate(sender,args,true);return true;}boolean ok=plugin.reloadPersona();if(Arrays.stream(args).anyMatch(x->x.equalsIgnoreCase("--json")))sender.sendMessage(Component.text("{\"valid\":"+ok+",\"activated\":"+ok+"}"));else sender.sendMessage(Component.text(ok?"Persona content reloaded.":"Reload failed; previous content retained. See console."));return true;}
         return false;
     }
@@ -109,15 +116,110 @@ public final class PersonaCommand implements CommandExecutor,TabCompleter {
         try{if(!file.toPath().normalize().startsWith(root.toPath().normalize()))throw new IllegalArgumentException("file must stay inside memory-transfer");if(operation.equals("export")){int count=MemoryTransfer.exportTo(plugin.memories(),file);sender.sendMessage(Component.text("Exported "+count+" memories to "+file.getAbsolutePath()));}else{if(!file.isFile())throw new IllegalArgumentException("file does not exist");int count=MemoryTransfer.importFrom(plugin.memories(),file);sender.sendMessage(Component.text("Imported "+count+" memories from "+file.getAbsolutePath()));}}catch(Exception e){sender.sendMessage(Component.text("Memory "+operation+" failed: "+e.getMessage()));}
     }
     private void memoryUsage(CommandSender sender){sender.sendMessage(Component.text("/persona memory <get|list|set|adjust|cas|expire|delete> <global|player> [player|uuid] [arguments] | export|import|metrics"));}
-    private void behavior(CommandSender sender,String[] args){if(!perm(sender,"persona.admin.behavior"))return;if(args.length<2){sender.sendMessage(Component.text("/persona behavior <pause|resume|restart|signal> [name]"));return;}NPC npc=CitizensAPI.getDefaultNPCSelector().getSelected(sender);if(npc==null){sender.sendMessage(Component.text("Select a Citizens NPC first."));return;}String operation=args[1].toLowerCase(Locale.ROOT);if(operation.equals("signal")){if(args.length<3){sender.sendMessage(Component.text("/persona behavior signal <name>"));return;}String name=args[2].toLowerCase(Locale.ROOT);if(!name.matches("[a-z0-9][a-z0-9_.:-]*")){sender.sendMessage(Component.text("Invalid signal name."));return;}int count=plugin.behaviors().signalSelected(npc,sender instanceof Player p?p:null,name,Map.of("sender",sender.getName()));sender.sendMessage(Component.text("Sent signal:"+name+" to "+count+" runtime(s)."));return;}if(!Set.of("pause","resume","restart").contains(operation)){sender.sendMessage(Component.text("Unknown behavior operation."));return;}int count=plugin.behaviors().controlSelected(npc,sender instanceof Player p?p:null,operation);sender.sendMessage(Component.text(Character.toUpperCase(operation.charAt(0))+operation.substring(1)+" applied to "+count+" runtime(s)."));}
+    private void behavior(CommandSender sender,String[] args){if(!perm(sender,"persona.admin.behavior"))return;if(args.length<2){sender.sendMessage(Component.text("/persona behavior <pause|resume|restart|wake|signal> [name]"));return;}NPC npc=CitizensAPI.getDefaultNPCSelector().getSelected(sender);if(npc==null){sender.sendMessage(Component.text("Select a Citizens NPC first."));return;}String operation=args[1].toLowerCase(Locale.ROOT);if(operation.equals("signal")){if(args.length<3){sender.sendMessage(Component.text("/persona behavior signal <name>"));return;}String name=args[2].toLowerCase(Locale.ROOT);if(!name.matches("[a-z0-9][a-z0-9_.:-]*")){sender.sendMessage(Component.text("Invalid signal name."));return;}int count=plugin.behaviors().signalSelected(npc,sender instanceof Player p?p:null,name,Map.of("sender",sender.getName()));sender.sendMessage(Component.text("Sent signal:"+name+" to "+count+" runtime(s)."));return;}if(!Set.of("pause","resume","restart","wake").contains(operation)){sender.sendMessage(Component.text("Unknown behavior operation."));return;}int count=plugin.behaviors().controlSelected(npc,sender instanceof Player p?p:null,operation);sender.sendMessage(Component.text(Character.toUpperCase(operation.charAt(0))+operation.substring(1)+" applied to "+count+" runtime(s)."));}
+    private void editor(CommandSender sender,String[] args){
+        if(!perm(sender,"persona.admin.editor.open"))return;
+        if(!perm(sender,"persona.admin.editor.view"))return;
+        if(plugin.editor()==null){sender.sendMessage(Component.text("The hosted Persona editor is unavailable: "+Objects.toString(plugin.editorError(),"unknown reason")+"."));return;}
+        if(args.length>1&&Set.of("sessions","trust","revoke","close","apply","rollback").contains(args[1].toLowerCase(Locale.ROOT))){editorSession(sender,args);return;}
+        EditorScope scope;
+        try{scope=EditorScope.parse(args.length>1?args[1]:"all");}catch(IllegalArgumentException e){sender.sendMessage(Component.text("Unknown editor scope. Use all, content, behaviors, npcs, dialogues, quests, or scripts."));return;}
+        SessionRestrictions restrictions;
+        try{restrictions=editorRestrictions(args,2);}catch(IllegalArgumentException e){sender.sendMessage(Component.text(e.getMessage()));return;}
+        sender.sendMessage(Component.text("Creating a secure Persona editor session..."));
+        plugin.editor().open(sender,scope,restrictions).whenComplete((session,error)->plugin.getServer().getScheduler().runTask(plugin,()->{
+            if(error!=null){Throwable cause=error instanceof java.util.concurrent.CompletionException&&error.getCause()!=null?error.getCause():error;sender.sendMessage(Component.text("Could not open the editor: "+Objects.toString(cause.getMessage(),cause.getClass().getSimpleName())));return;}
+            sender.sendMessage(Component.text("Open Persona Editor").clickEvent(ClickEvent.openUrl(session.editorUrl())));
+            sender.sendMessage(Component.text("Session: "+session.sessionId()+"; verification code: "+session.verificationCode()));
+            sender.sendMessage(Component.text("Scope: "+scope.name().toLowerCase(Locale.ROOT)+"; filters: "+restrictionText(restrictions)+"; requested: "+capabilities(EditorClient.requestedCapabilities(sender))+"; expires: "+session.expiresAt()));
+            sender.sendMessage(Component.text("The verified browser starts read-only. Use /persona editor trust "+shortId(session.sessionId())+" to review it before granting elevated capabilities."));
+        }));
+    }
+    private void editorSession(CommandSender sender,String[] args){
+        String operation=args[1].toLowerCase(Locale.ROOT);
+        if(operation.equals("sessions")){
+            Collection<EditorClient.LocalSession> sessions=plugin.editor().sessions();
+            sender.sendMessage(Component.text("Active Persona editor sessions: "+sessions.size()));
+            sessions.forEach(session->sender.sendMessage(Component.text(" • "+shortId(session.id())+" "+session.initiatorName()+" scope="+session.scope().name().toLowerCase(Locale.ROOT)+" filters="+restrictionText(session.restrictions())+" requested="+capabilities(session.requestedCapabilities())+" expires="+session.expiresAt())));
+            return;
+        }
+        if(args.length<3){sender.sendMessage(Component.text("/persona editor <trust|revoke|close> <session-id> [confirm] | apply <session-id> <code> | rollback <session-id> <publish-id> confirm"));return;}
+        String reference=args[2];
+        try{
+            if(operation.equals("apply")){
+                if(!perm(sender,"persona.admin.editor.publish"))return;
+                if(!plugin.getConfig().getBoolean("editor.publish-enabled",false)){sender.sendMessage(Component.text("Hosted content publication is disabled in config.yml."));return;}
+                if(args.length!=4){sender.sendMessage(Component.text("/persona editor apply <session-id> <one-time-code>"));return;}
+                if(!plugin.editor().ownedBy(reference,sender)){sender.sendMessage(Component.text("Only the player or console that opened this session may confirm its publication."));return;}
+                sender.sendMessage(Component.text("Revalidating and applying the confirmed editor candidate..."));
+                plugin.editor().apply(reference,args[3]).whenComplete((result,error)->plugin.getServer().getScheduler().runTask(plugin,()->{
+                    if(error!=null){editorError(sender,error);return;}
+                    sender.sendMessage(Component.text(result.status().equals("PUBLISHED")
+                            ?"Publication applied. Active revision: "+result.activeRevision()+"; backup: "+result.backupId()
+                            :"Publication failed with status "+result.status()+": "+Objects.toString(result.error(),"see audit log")));
+                }));return;
+            }
+            if(operation.equals("rollback")){
+                if(!perm(sender,"persona.admin.editor.publish"))return;
+                if(!plugin.getConfig().getBoolean("editor.publish-enabled",false)){sender.sendMessage(Component.text("Hosted content publication is disabled in config.yml."));return;}
+                if(args.length!=5||!args[4].equalsIgnoreCase("confirm")){sender.sendMessage(Component.text("/persona editor rollback <session-id> <publish-id> confirm"));return;}
+                if(!plugin.editor().ownedBy(reference,sender)){sender.sendMessage(Component.text("Only the player or console that opened this session may confirm its rollback."));return;}
+                UUID publishId;try{publishId=UUID.fromString(args[3]);}catch(IllegalArgumentException invalid){sender.sendMessage(Component.text("Publish ID must be a complete UUID."));return;}
+                sender.sendMessage(Component.text("Revalidating and restoring the confirmed publication backup..."));
+                plugin.editor().rollback(reference,publishId).whenComplete((result,error)->plugin.getServer().getScheduler().runTask(plugin,()->{
+                    if(error!=null){editorError(sender,error);return;}
+                    sender.sendMessage(Component.text(result.status().equals("ROLLED_BACK")
+                            ?"Rollback applied. Active revision: "+result.activeRevision()+"; safety backup: "+result.backupId()
+                            :"Rollback failed with status "+result.status()+": "+Objects.toString(result.error(),"see audit log")));
+                }));return;
+            }
+            if(operation.equals("close")){plugin.editor().close(reference);sender.sendMessage(Component.text("Editor session closed."));return;}
+            if(operation.equals("revoke")){editorResult(sender,plugin.editor().revokeTrust(reference),"Editor trust revoked; the browser is read-only.");return;}
+            if(!operation.equals("trust")){sender.sendMessage(Component.text("Unknown editor session operation."));return;}
+            if(args.length<4||!args[3].equalsIgnoreCase("confirm")){
+                plugin.editor().status(reference).whenComplete((status,error)->plugin.getServer().getScheduler().runTask(plugin,()->{
+                    if(error!=null){editorError(sender,error);return;}
+                    showTrust(sender,status);
+                    sender.sendMessage(Component.text("Run /persona editor trust "+shortId(status.sessionId())+" confirm to grant capabilities currently allowed by your permissions."));
+                }));
+                return;
+            }
+            Set<Capability> approved=EditorClient.requestedCapabilities(sender);
+            editorResult(sender,plugin.editor().trust(reference,approved),"Editor capabilities trusted.");
+        }catch(RuntimeException error){editorError(sender,error);}
+    }
+    private void showTrust(CommandSender sender,EditorSessionStatus status){
+        sender.sendMessage(Component.text("Session "+status.sessionId()+" for "+status.initiatorName()+" ("+status.initiatorId()+")"));
+        String code=plugin.editor().sessions().stream().filter(local->local.id().equals(status.sessionId())).map(EditorClient.LocalSession::verificationCode).findFirst().orElse("unavailable");
+        sender.sendMessage(Component.text("Verification code: "+code+"; browser: "+Objects.toString(status.browserDescription(),"not verified")+"; verified="+status.browserVerified()));
+        sender.sendMessage(Component.text("Scope: "+status.scope().name().toLowerCase(Locale.ROOT)+"; filters: "+restrictionText(status.restrictions())+"; requested: "+capabilities(status.requestedCapabilities())+"; granted: "+capabilities(status.grantedCapabilities())+"; expires: "+status.expiresAt()));
+    }
+    private static SessionRestrictions editorRestrictions(String[] args,int start){
+        Set<String> worlds=new LinkedHashSet<>(),players=new LinkedHashSet<>(),npcs=new LinkedHashSet<>(),namespaces=new LinkedHashSet<>();
+        for(int i=start;i<args.length;i++){
+            String[] pair=args[i].split("=",2);
+            if(pair.length!=2||pair[1].isBlank())throw new IllegalArgumentException("Editor filters use world=<id>, player=<uuid>, npc=<id>, or namespace=<id>.");
+            Set<String> target=switch(pair[0].toLowerCase(Locale.ROOT)){case "world"->worlds;case "player"->players;case "npc"->npcs;case "namespace"->namespaces;default->throw new IllegalArgumentException("Unknown editor filter "+pair[0]+".");};
+            target.addAll(Arrays.stream(pair[1].split(",")).map(String::trim).filter(value->!value.isEmpty()).toList());
+        }
+        return new SessionRestrictions(worlds,players,npcs,namespaces);
+    }
+    private static String restrictionText(SessionRestrictions restrictions){return restrictions.unrestricted()?"unrestricted":restrictions.signingValue();}
+    private void editorResult(CommandSender sender,java.util.concurrent.CompletableFuture<EditorSessionStatus> future,String success){
+        future.whenComplete((status,error)->plugin.getServer().getScheduler().runTask(plugin,()->{if(error!=null){editorError(sender,error);return;}sender.sendMessage(Component.text(success));showTrust(sender,status);}));
+    }
+    private void editorError(CommandSender sender,Throwable error){Throwable cause=error instanceof java.util.concurrent.CompletionException&&error.getCause()!=null?error.getCause():error;sender.sendMessage(Component.text("Editor session operation failed: "+Objects.toString(cause.getMessage(),cause.getClass().getSimpleName())));}
+    private static String shortId(UUID id){return id.toString().substring(0,8);}
+    private static String capabilities(Collection<Capability> values){return values.stream().map(Enum::name).sorted().collect(java.util.stream.Collectors.joining(", "));}
     private void validate(CommandSender sender,String[] args,boolean dryRun){if(!dryRun&&!perm(sender,"persona.admin.validate"))return;var report=plugin.validateContent();boolean json=Arrays.stream(args).anyMatch(x->x.equalsIgnoreCase("--json"));if(json){String value=report.json();sender.sendMessage(Component.text(value.substring(0,value.length()-1)+",\"activated\":false}"));return;}sender.sendMessage(Component.text((dryRun?"Reload dry-run":"Validation")+(report.valid()?" succeeded; no content was activated.":" failed with "+report.errors().size()+" error(s); active content was unchanged.")));report.errors().forEach(error->sender.sendMessage(Component.text(" • "+error)));}
     private void debug(CommandSender sender,String[] args){if(!perm(sender,"persona.admin.debug"))return;if(args.length<2||args[1].equalsIgnoreCase("off")){plugin.behaviors().debug(null);sender.sendMessage(Component.text("Scoped behavior debug logging disabled."));return;}Map<String,String> values=new HashMap<>();for(int i=1;i<args.length;i++){int split=args[i].indexOf('=');if(split>0)values.put(args[i].substring(0,split).toLowerCase(Locale.ROOT),args[i].substring(split+1));}var filter=new nu.miguel.persona.behavior.BehaviorService.DebugFilter(values.get("npc"),values.get("player"),values.get("behavior"),values.get("node"));plugin.behaviors().debug(filter);sender.sendMessage(Component.text("Scoped behavior debug logging: "+filter));}
     private void diagnostics(CommandSender sender){if(!perm(sender,"persona.admin.debug"))return;var orphans=plugin.behaviors().orphanedRuntimes();sender.sendMessage(Component.text("Orphaned persisted runtimes: "+orphans.size()));orphans.forEach(item->sender.sendMessage(Component.text(" • "+item)));plugin.behaviors().extensionUsage().forEach((name,usage)->sender.sendMessage(Component.text("Extension "+name+": calls="+usage.calls()+", total-ms="+String.format(Locale.ROOT,"%.3f",usage.totalMillis())+", max-ms="+String.format(Locale.ROOT,"%.3f",usage.maximumMillis()))));}
     private void support(CommandSender sender){if(!perm(sender,"persona.admin.support"))return;try{File file=SupportBundle.create(plugin,plugin.validateContent());sender.sendMessage(Component.text("Support bundle created: "+file.getAbsolutePath()+" (configuration secrets and runtime values are redacted)."));}catch(Exception e){sender.sendMessage(Component.text("Support bundle failed: "+e.getMessage()));}}
     private void backup(CommandSender sender){if(!perm(sender,"persona.admin.backup"))return;plugin.states().saveAll();plugin.memories().flush();plugin.behaviors().flush(false);File target=new File(plugin.getDataFolder(),"backups/persona-"+DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").format(LocalDateTime.now())+".db");sender.sendMessage(Component.text("Creating Persona database backup..."));plugin.store().backup(target).whenComplete((file,error)->plugin.getServer().getScheduler().runTask(plugin,()->sender.sendMessage(Component.text(error==null?"Backup created: "+file.getAbsolutePath():"Backup failed: "+error.getMessage()))));}
+    private void example(CommandSender sender,String[] args){if(!perm(sender,"persona.admin.reload"))return;if(args.length<2||args[1].equalsIgnoreCase("list")){sender.sendMessage(Component.text("Packaged examples: "+String.join(", ",nu.miguel.persona.content.ExampleInstaller.AVAILABLE)));sender.sendMessage(Component.text("Use /persona example copy <path>; existing files are never overwritten."));return;}if(args.length!=3||!args[1].equalsIgnoreCase("copy")){sender.sendMessage(Component.text("/persona example list | copy <path>"));return;}try{var target=nu.miguel.persona.content.ExampleInstaller.copy(plugin.getDataFolder().toPath(),args[2]);sender.sendMessage(Component.text("Copied example to "+target+". Review it, then run /persona reload --dry-run."));}catch(Exception error){sender.sendMessage(Component.text("Example copy failed: "+error.getMessage()));}}
     private PlayerState ready(Player p){PlayerState s=plugin.states().require(p);if(s==null)p.sendMessage(Component.text("Your Persona data is still loading."));return s;}
     private boolean perm(CommandSender s,String permission){if(s.hasPermission(permission))return true;s.sendMessage(Component.text("You do not have permission."));return false;}
     private int parse(String v,int fallback){try{return Integer.parseInt(v);}catch(NumberFormatException e){return fallback;}}
-    @Override public List<String> onTabComplete(@NotNull CommandSender sender,@NotNull org.bukkit.command.Command command,@NotNull String alias,String @NotNull [] args){if(args.length==1)return prefix(args[0],List.of("quests","quest","dialogue","npc","memory","behavior","validate","debug","diagnostics","support","backup","reload"));if(args.length==2&&args[0].equalsIgnoreCase("quest"))return prefix(args[1],List.of("show","start","finish","reset"));if(args.length==2&&args[0].equalsIgnoreCase("behavior"))return prefix(args[1],List.of("pause","resume","restart","signal"));if(args.length==2&&args[0].equalsIgnoreCase("reload"))return prefix(args[1],List.of("--dry-run","--json"));if(args.length==2&&args[0].equalsIgnoreCase("validate"))return prefix(args[1],List.of("--json"));if(args.length==2&&args[0].equalsIgnoreCase("debug"))return prefix(args[1],List.of("off","npc=","player=","behavior=","node="));if(args.length==2&&args[0].equalsIgnoreCase("npc"))return prefix(args[1],List.of("bind","unbind","info","trace"));if(args.length==2&&args[0].equalsIgnoreCase("memory"))return prefix(args[1],List.of("get","list","set","adjust","cas","expire","delete","export","import","metrics"));if(args.length==3&&args[0].equalsIgnoreCase("memory")&&!Set.of("export","import","metrics").contains(args[1].toLowerCase(Locale.ROOT)))return prefix(args[2],List.of("global","player"));if(args.length==4&&args[0].equalsIgnoreCase("memory")&&args[2].equalsIgnoreCase("player")){List<String> players=new ArrayList<>(plugin.getServer().getOnlinePlayers().stream().map(Player::getName).toList());players.add("self");return prefix(args[3],players);}if(args.length==3&&args[0].equalsIgnoreCase("npc")&&args[1].equalsIgnoreCase("bind"))return prefix(args[2],plugin.registry().npcs().keySet());return List.of();}
+    @Override public List<String> onTabComplete(@NotNull CommandSender sender,@NotNull org.bukkit.command.Command command,@NotNull String alias,String @NotNull [] args){if(args.length==1)return prefix(args[0],List.of("quests","quest","dialogue","npc","memory","behavior","editor","example","validate","debug","diagnostics","support","backup","reload"));if(args.length==2&&args[0].equalsIgnoreCase("example"))return prefix(args[1],List.of("list","copy"));if(args.length==3&&args[0].equalsIgnoreCase("example")&&args[1].equalsIgnoreCase("copy"))return prefix(args[2],nu.miguel.persona.content.ExampleInstaller.AVAILABLE);if(args.length==2&&args[0].equalsIgnoreCase("editor"))return prefix(args[1],List.of("all","content","behaviors","npcs","dialogues","quests","scripts","sessions","trust","revoke","close","apply","rollback"));if(args.length>=3&&args[0].equalsIgnoreCase("editor")&&!Set.of("trust","revoke","close","apply","rollback","sessions").contains(args[1].toLowerCase(Locale.ROOT)))return prefix(args[args.length-1],List.of("world=","player=","npc=","namespace="));if(args.length==3&&args[0].equalsIgnoreCase("editor")&&Set.of("trust","revoke","close","apply","rollback").contains(args[1].toLowerCase(Locale.ROOT)))return prefix(args[2],plugin.editor()==null?List.of():plugin.editor().sessions().stream().map(session->shortId(session.id())).toList());if(args.length==4&&args[0].equalsIgnoreCase("editor")&&args[1].equalsIgnoreCase("trust"))return prefix(args[3],List.of("confirm"));if(args.length==5&&args[0].equalsIgnoreCase("editor")&&args[1].equalsIgnoreCase("rollback"))return prefix(args[4],List.of("confirm"));if(args.length==2&&args[0].equalsIgnoreCase("quest"))return prefix(args[1],List.of("show","start","finish","reset"));if(args.length==2&&args[0].equalsIgnoreCase("behavior"))return prefix(args[1],List.of("pause","resume","restart","signal","wake"));if(args.length==2&&args[0].equalsIgnoreCase("reload"))return prefix(args[1],List.of("--dry-run","--json"));if(args.length==2&&args[0].equalsIgnoreCase("validate"))return prefix(args[1],List.of("--json"));if(args.length==2&&args[0].equalsIgnoreCase("debug"))return prefix(args[1],List.of("off","npc=","player=","behavior=","node="));if(args.length==2&&args[0].equalsIgnoreCase("npc"))return prefix(args[1],List.of("bind","unbind","info","trace"));if(args.length==2&&args[0].equalsIgnoreCase("memory"))return prefix(args[1],List.of("get","list","set","adjust","cas","expire","delete","export","import","metrics"));if(args.length==3&&args[0].equalsIgnoreCase("memory")&&!Set.of("export","import","metrics").contains(args[1].toLowerCase(Locale.ROOT)))return prefix(args[2],List.of("global","player"));if(args.length==4&&args[0].equalsIgnoreCase("memory")&&args[2].equalsIgnoreCase("player")){List<String> players=new ArrayList<>(plugin.getServer().getOnlinePlayers().stream().map(Player::getName).toList());players.add("self");return prefix(args[3],players);}if(args.length==3&&args[0].equalsIgnoreCase("npc")&&args[1].equalsIgnoreCase("bind"))return prefix(args[2],plugin.registry().npcs().keySet());return List.of();}
     private List<String> prefix(String p,Collection<String> values){return values.stream().filter(x->x.startsWith(p.toLowerCase(Locale.ROOT))).sorted().toList();}
 }

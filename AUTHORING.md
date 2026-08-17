@@ -5,7 +5,7 @@ Persona 2.0 uses one ordered script language everywhere executable behavior is a
 ## Content format compatibility
 
 Persona's YAML content format is version `1`. This version is independent of the
-plugin version (`2.0.0`), the Java extension API (`2.1`), the editor protocol, and the
+plugin version (`2.0.0`), the Java extension API (`2.2`), the editor protocol, and the
 SQLite schema. A file may declare `content-version: 1` at its root. Existing files
 without that field are interpreted as format 1; a future or malformed version is
 rejected before activation. Persona will document migrations before incrementing the
@@ -149,9 +149,9 @@ scripts:
 
 Invoke it with `{ type: run-script, script: celebration }`.
 
-## Extension API 2.1
+## Extension API 2.2
 
-Persona API 2.x evolves additively. The current level is `2.1`; previously compiled
+Persona API 2.x evolves additively. The current level is `2.2`; previously compiled
 2.0 extensions remain accepted. An extension may request any published 2.x level up
 to the runtime's current level; a future minor is rejected rather than silently
 running without APIs it may require.
@@ -191,6 +191,30 @@ most once, on the server thread, so 2.0 actions retain their behavior. A reload,
 restart, branch interruption, timeout, or shutdown cancels the execution. See
 `ExampleBehaviorExpansion` in the published sources for a scoped condition and a
 cancellable asynchronous action.
+
+API 2.2 adds data-only hosted-editor contracts. Every command, condition, objective,
+placeholder, behavior action, and behavior condition implements
+`EditorSchemaProvider`; override `editorSchema()` with an ordinary JSON Schema object.
+For a future content kind, call `registrar.editorSchema(kind, name, provider)`. Persona
+namespaces the type, captures an immutable copy, signs the complete metadata snapshot,
+and never loads extension-provided JavaScript or frontend components.
+
+Standard optional annotations are `x-persona-widget`, `x-persona-catalog`,
+`x-persona-reference-type`, `x-persona-order`, `x-persona-depends-on`, and
+`x-persona-validation-message`. Ordinary JSON Schema remains authoritative, including
+`type`, `title`, `description`, `examples`, `default`, `required`, `deprecated`,
+`enum`, numeric/string/list constraints, and `oneOf`/`anyOf`. Supported widget hints
+include searchable/multi selects, radio groups, checkboxes, sliders, duration/color,
+location/anchor, material/entity, script-reference, and content-ID pickers. Older
+editors ignore these annotations and raw YAML always remains available.
+
+Use `registrar.editorCatalog(name, provider)` for read-only values known only by the
+server. `CatalogMetadata` declares a stable revision, value schema, optional permission,
+cache policy, dependency fields, and whether a missing former value rejects or warns.
+`query` receives bounded search/page/dependency input and may return at most 200 stable
+IDs with optional labels, descriptions, groups, icons, and deprecation markers. Persona
+invokes providers only on the Minecraft server thread and rejects undeclared dependencies,
+mismatched revisions/pages, and oversized results.
 
 ## Administration and support
 
@@ -359,3 +383,93 @@ On content reload, Persona applies these migration rules:
 
 See the README's database section for the supported online backup and corruption
 recovery procedure.
+
+## Complete behavior-node reference
+
+Every node requires a stable `id`. Composite `children` and decorator `child` values
+are ordered YAML structures, so the hosted editor can move a complete branch without
+regenerating unrelated source. The smallest valid examples below are also focused
+copy/paste examples for each node kind.
+
+| Node | Required fields | Optional fields | Status and cancellation | Minimal example |
+|---|---|---|---|---|
+| `sequence` | `children` | — | Runs in order; first failure fails; all success succeeds. Cancels the running child when interrupted. | `{ id: seq, type: sequence, children: [{ id: done, type: action, action: set-visible, visible: true }] }` |
+| `selector` | `children` | — | Runs in order; first success succeeds; all failures fail. | `{ id: pick, type: selector, children: [{ id: coin, type: condition, condition: chance, chance: 0.5 }] }` |
+| `priority-selector` | `children` | — | Rechecks higher-priority children and cancels a lower running branch when one becomes eligible. | `{ id: priority, type: priority-selector, children: [{ id: ready, type: condition, condition: event, event: interaction }] }` |
+| `parallel` | `children` | `success-threshold`, `failure-threshold`, `cancel-remaining` | Evaluates in YAML order; success wins a same-tick threshold tie. | `{ id: both, type: parallel, success-threshold: 1, children: [{ id: coin, type: condition, condition: chance, chance: 1 }] }` |
+| `invert` | `child` | — | Swaps success/failure; preserves running. | `{ id: not, type: invert, child: { id: coin, type: condition, condition: chance, chance: 0.5 } }` |
+| `repeat` | `child` | `times` or `forever` | Repeats after success, yielding once per completed iteration; interruption cancels the child. | `{ id: twice, type: repeat, times: 2, child: { id: pause, type: wait, duration: 1s } }` |
+| `retry` | `child` | `times` or `forever` | Repeats after failure and returns the first success. | `{ id: retry, type: retry, times: 3, child: { id: coin, type: condition, condition: chance, chance: 0.5 } }` |
+| `timeout` | `child`, `duration` | — | Fails and cancels the child at its absolute deadline. | `{ id: timed, type: timeout, duration: 5s, child: { id: pause, type: wait, duration: 10s } }` |
+| `cooldown` | `child`, `duration` | — | Runs the child, then rejects re-entry until its durable absolute deadline. | `{ id: cooled, type: cooldown, duration: 1m, child: { id: signal, type: action, action: signal, name: ready } }` |
+| `checkpoint` | `child` | — | Persists compatible child progress; structural changes restart that checkpoint safely. | `{ id: durable, type: checkpoint, child: { id: pause, type: wait, duration: 5s } }` |
+| `condition` | `condition` plus condition fields | `consume` for events | Succeeds or fails immediately. | `{ id: clicked, type: condition, condition: event, event: interaction, consume: true }` |
+| `action` | `action` plus action fields | action-specific | May run asynchronously; interruption invokes cancellation exactly once. | `{ id: remember, type: action, action: remember, key: met, value: true }` |
+| `wait` | `duration` | — | Runs until its durable absolute deadline; cancellation clears transient execution. | `{ id: pause, type: wait, duration: 2s }` |
+| `subtree` | `subtree` | — | Evaluates the referenced compatible tree without embedding it; recursion is rejected. | `{ id: patrol, type: subtree, subtree: village:patrol }` |
+
+Native behavior conditions are `event`, `memory`, `quest-state`, `item-count`, `flag`,
+`variable`, `permission`, `world`, and `chance`. Native actions are `navigate`,
+`private-navigate`, `logical-travel`, `wander`, `look`, `set-anchor`, `set-visible`,
+`begin-private-presentation`, `remember`, `adjust-memory`, `forget`, `signal`,
+`script`, and `command`. Their fields are the same typed fields documented in the
+condition, script, memory, and navigation sections above; extension nodes publish
+their own JSON Schema and appear in the editor palette automatically.
+
+### Status propagation and cancellation
+
+```text
+event/wake ──> scheduler budget ──> parent node ──> selected child
+                                      │                 │
+                         SUCCESS <────┴──── child success
+                         FAILURE <───────── child failure
+                         RUNNING <───────── wait/action/deadline
+                                      │
+reload / restart / timeout / priority replacement / shutdown
+                                      │
+                                      └──> cancel child and its async token once
+```
+
+`RUNNING` retains only the node IDs and durable values declared by the runtime.
+`SUCCESS` and `FAILURE` propagate according to the table. Cancellation is not success:
+the interrupted operation completes as failure, releases navigation/tasks, and cannot
+commit later through a stale callback. Checkpoints retain compatible progress;
+ordinary transient running paths restart.
+
+## Authoring recipes
+
+- Patrols: put `navigate` actions for named anchors in a `sequence`, wrap it in
+  `repeat: { forever: true }`, and use `checkpoint` only if restart position matters.
+- Schedules: use a world/time extension condition or a named server signal in a
+  `priority-selector`; make the fallback branch idempotent.
+- Relationships and secrets: store typed player/NPC memories such as
+  `relationship:trust` and `secret:heard-rumor`; gate dialogue registrations with
+  memory/flag conditions and never place secrets in globally visible NPC memory.
+- Cutscenes: compose `say`, `wait`, `title`, `npc-animation`, and movement in an
+  ordered reusable script. Supply `on-failure` for any mutation that can be refused.
+- Shops: use a choice per offer, an item/currency condition, and a typed extension
+  command that atomically validates and applies the transaction.
+- Companions: attach a player-scoped behavior, begin a private presentation, and use
+  proximity plus `private-navigate`; a shared behavior must not read player state.
+- Shared world events: keep the authoritative phase in global NPC memory, wake shared
+  trees with a named signal, and let player trees derive private presentation only.
+
+Start with `behaviors/private-walker.yml` for a minimal complete behavior. The
+`keeper-*` set is a complete shared/player/subtree example, and `builder-routine.yml`
+focuses on navigation and memory. The packaged dialogues, quests, NPCs, and
+`scripts.yml` form one complete cross-file project. Run `/persona example list`, then
+`/persona example copy <path>`; copying refuses to overwrite an existing live file.
+
+## Content-format upgrade policy
+
+Format 1 is the current baseline. The 1.x-to-2.0 table above is the format-1 migration
+guide: legacy dialogue/effect documents are intentionally not rewritten in place.
+Before any future `content-version` increment, Persona will ship a section named
+`Format N → N+1`, deterministic before/after fixtures, and a dry-run validator that
+accepts both the prior and next format during the documented transition window.
+Runtime, editor protocol, API, and database versions do not implicitly change the
+content format.
+
+Versioned JSON Schema files are packaged under `schema/` and published by Gradle as
+the `persona-<version>-schemas.zip` Maven artifact in addition to the plugin/API
+artifacts.

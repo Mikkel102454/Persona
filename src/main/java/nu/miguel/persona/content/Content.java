@@ -34,7 +34,10 @@ public final class Content {
 
     public sealed interface Step permits Say,If,ChoiceStep,Goto,EndDialogue,Stop,Wait,RandomStep,RunScript,Command {}
     public record WeightedText(String text,int weight) {}
-    public record Say(String text,List<WeightedText> variants,Duration delay) implements Step {}
+    public record Say(String text,String textKey,Map<String,String> translations,List<WeightedText> variants,Duration delay) implements Step {
+        public Say { translations=Map.copyOf(translations);variants=List.copyOf(variants); }
+        public Say(String text,List<WeightedText> variants,Duration delay){this(text,null,Map.of(),variants,delay);}
+    }
     public record If(Condition when,List<Step> thenScript,List<Step> elseScript) implements Step {}
     public record ChoiceStep(List<ChoiceOption> options) implements Step {}
     public record ChoiceOption(String text,Condition when,List<Step> script) {}

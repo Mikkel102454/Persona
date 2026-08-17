@@ -7,4 +7,8 @@ public interface ExpansionRegistrar {
     void objective(String name, ExpansionTypes.Objective handler);
     void behaviorCondition(String name, ExpansionTypes.BehaviorCondition handler);
     void behaviorAction(String name, ExpansionTypes.BehaviorAction handler);
+    /** Registers metadata for an extension-defined current or future content type. */
+    void editorSchema(String contentType, String name, EditorSchemaProvider provider);
+    /** Registers a read-only, bounded live catalog. The catalog ID is extension-namespaced. */
+    void editorCatalog(String name, EditorCatalogProvider provider);
 }

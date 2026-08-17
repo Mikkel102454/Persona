@@ -76,6 +76,19 @@ class AdvancedContentLoaderTest {
               first:
                 lines: [ { text: old } ]
             """);ContentException e=assertThrows(ContentException.class,()->loader().load());assertTrue(e.errors().stream().anyMatch(x->x.contains("Persona 2.0")&&x.contains("lines")));}
+    @Test void loadsLocalizedDialogueText() throws Exception {dirs();Files.writeString(temp.resolve("dialogues/localized.yml"),"""
+            id: test:localized
+            start: first
+            nodes:
+              first:
+                script:
+                  - type: say
+                    text-key: dialogue.guide.hello
+                    translations:
+                      en: Hello
+                      da-dk: Hej
+                      default: Welcome
+            """);Say say=(Say)loader().load().dialogues().get("test:localized").nodes().get("first").script().getFirst();assertEquals("dialogue.guide.hello",say.textKey());assertEquals("Hej",say.translations().get("da-dk"));}
     private void dirs() throws Exception {Files.createDirectories(temp.resolve("npcs"));Files.createDirectories(temp.resolve("dialogues"));Files.createDirectories(temp.resolve("quests"));}
     private ContentLoader loader(){return new ContentLoader(temp.toFile(),Duration.ofSeconds(2),x->Material.STONE,x->EntityType.ZOMBIE);}
 }

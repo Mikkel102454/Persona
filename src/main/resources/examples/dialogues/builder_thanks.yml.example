@@ -9,3 +9,4 @@ nodes:
         flag: thanked_builder
         value: true
       - type: end-dialogue
+# This higher-priority follow-up is selected by the NPC registration conditions, not by file order.

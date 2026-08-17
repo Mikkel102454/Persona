@@ -14,3 +14,4 @@ on-complete:
   - type: set-flag
     flag: helped_builder
     value: true
+# Progress hooks use `every` thresholds; rewards belong in lifecycle scripts and run only after validation.

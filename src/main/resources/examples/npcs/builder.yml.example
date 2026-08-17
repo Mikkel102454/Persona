@@ -13,3 +13,4 @@ dialogues:
   - id: village:builder_thanks
     priority: 100
     when: { type: quest-state, quest: village:supplies, state: completed }
+# Dialogue priorities are descending; hooks are ordinary ordered scripts and player-behavior is per viewer.

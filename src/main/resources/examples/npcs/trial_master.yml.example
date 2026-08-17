@@ -10,3 +10,4 @@ dialogues:
   - id: guild:trial_complete
     priority: 100
     when: { type: quest-state, quest: guild:adventurers_trial, state: completed }
+# Named anchors are world-qualified; dialogue registration order breaks equal-priority ties deterministically.

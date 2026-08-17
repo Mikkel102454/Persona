@@ -204,6 +204,6 @@ The shaded plugin JAR is written to `build/libs/Persona-2.0.0.jar`. The developm
 
 ## Extensions
 
-Standalone extensions are loaded at server startup from `plugins/Persona/extensions`. Each extension JAR must contain a `persona-extension.yml` manifest and an implementation of `PersonaExpansion` targeting API version `2.x` (current: `2.1`). Extensions can register namespaced commands, conditions, placeholders, objectives, behavior conditions, and cancellable behavior actions. API evolution within 2.x is additive and previously compiled 2.0 extensions remain compatible.
+Standalone extensions are loaded at server startup from `plugins/Persona/extensions`. Each extension JAR must contain a `persona-extension.yml` manifest and an implementation of `PersonaExpansion` targeting API version `2.x` (current: `2.2`). Extensions can register namespaced commands, conditions, placeholders, objectives, behavior conditions, cancellable behavior actions, data-only editor schemas, and bounded live catalogs. API evolution within 2.x is additive and previously compiled 2.0 extensions remain compatible.
 
 Persona also publishes a standard Java component and a shaded artifact through Gradle's `maven-publish` configuration for local or repository-based API consumption.

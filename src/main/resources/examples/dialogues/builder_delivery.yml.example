@@ -29,3 +29,4 @@ nodes:
       - type: say
         text: "You still need to bring me ten oak logs."
       - type: end-dialogue
+# Delivery uses an atomic quest/objective command; success and failure handlers resume only after the result.

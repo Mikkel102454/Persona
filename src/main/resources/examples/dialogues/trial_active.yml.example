@@ -8,3 +8,4 @@ nodes:
       - type: say
         text: "Reporting to me also counts when the combat phase asks you to return."
       - type: end-dialogue
+# Active-quest dialogue: control-flow targets are stable node IDs within this document.

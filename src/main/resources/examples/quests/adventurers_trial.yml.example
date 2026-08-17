@@ -92,3 +92,4 @@ on-complete:
     script: quest-success
   - type: broadcast
     text: "<aqua><player> completed <quest-title>!"
+# Objective IDs are stable persistence keys; phase branches choose the first eligible destination or fall through.
