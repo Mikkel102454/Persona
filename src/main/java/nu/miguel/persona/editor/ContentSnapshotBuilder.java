@@ -41,18 +41,19 @@ final class ContentSnapshotBuilder {
             revision.update(file.sha256().getBytes(StandardCharsets.US_ASCII));
             revision.update((byte) 0);
         }
-        return new Project(hex(revision.digest()), files);
+        Set<String> folders=ProjectManifest.read(root);String manifestDigest=files.stream().filter(file->file.path().equals(ProjectManifest.PATH)).map(ContentFile::sha256).findFirst().orElse(sha256(new byte[0]));
+        return new Project(hex(revision.digest()), files,folders,manifestDigest);
     }
 
     private static List<Path> candidates(Path root, EditorScope scope) throws IOException {
         LinkedHashSet<Path> result = new LinkedHashSet<>();
-        if (scope == EditorScope.ALL || scope == EditorScope.CONTENT || scope == EditorScope.SCRIPTS)
-            result.add(root.resolve("scripts.yml"));
+        if(scope==EditorScope.ALL||scope==EditorScope.CONTENT)result.add(root.resolve(ProjectManifest.PATH));
         Map<EditorScope, String> directories = Map.of(
                 EditorScope.BEHAVIORS, "behaviors",
                 EditorScope.NPCS, "npcs",
                 EditorScope.DIALOGUES, "dialogues",
-                EditorScope.QUESTS, "quests");
+                EditorScope.QUESTS, "quests",
+                EditorScope.SCRIPTS, "scripts");
         for (var entry : directories.entrySet()) {
             if (scope != EditorScope.ALL && scope != EditorScope.CONTENT && scope != entry.getKey()) continue;
             Path directory = root.resolve(entry.getValue());
@@ -85,7 +86,7 @@ final class ContentSnapshotBuilder {
     }
     private static String hex(byte[] value) { return HexFormat.of().formatHex(value); }
 
-    record Project(String revision, List<ContentFile> files) {
-        Project { files = List.copyOf(files); }
+    record Project(String revision, List<ContentFile> files,Set<String> folders,String manifestDigest) {
+        Project { files = List.copyOf(files);folders=Set.copyOf(folders); }
     }
 }

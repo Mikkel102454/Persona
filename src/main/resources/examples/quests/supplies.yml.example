@@ -1,3 +1,4 @@
+content-version: 2
 id: village:supplies
 title: "Building Supplies"
 phases:
@@ -8,10 +9,17 @@ phases:
         material: minecraft:oak_log
         amount: 10
     on-complete:
-      - type: give-experience
-        amount: 25
+      variables: {}
+      nodes:
+        experience: { type: give-experience, amount: 25 }
+      connections:
+        enter: { from: $event.exec, to: experience.exec }
+        experience-player: { from: $event.player, to: experience.player }
 on-complete:
-  - type: set-flag
-    flag: helped_builder
-    value: true
-# Progress hooks use `every` thresholds; rewards belong in lifecycle scripts and run only after validation.
+  variables: {}
+  nodes:
+    remember: { type: set-flag, flag: helped_builder, value: true }
+  connections:
+    enter: { from: $event.exec, to: remember.exec }
+    remember-player: { from: $event.player, to: remember.player }
+# Lifecycle hooks are host-event graphs and run only after validation.

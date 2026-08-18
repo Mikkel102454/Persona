@@ -8,6 +8,7 @@
 #
 # Each player gets an independent private projection. Other players continue to see
 # either their own projection or the shared Citizens actor.
+content-version: 2
 id: persona:private-walker
 display-name: "<aqua>Private Walker"
 player-behavior: persona:private-walker-demo
@@ -16,10 +17,18 @@ anchors:
   # Replace these example coordinates before using the sample.
   destination: { world: world, x: 10, y: 64, z: 0, yaw: 90 }
 
-on-interact:
-  - type: message
-    text: "<gray>This actor walks privately for each player."
+on-click:
+  variables: {}
+  nodes:
+    explain: { type: message, text: "<gray>This actor walks privately for each player." }
+  connections:
+    enter: { from: $event.exec, to: explain.exec }
+    explain-player: { from: $event.player, to: explain.player }
 
 on-no-dialogue:
-  - type: message
-    text: "<gray>Delete the demo-arrived player memory to run the walk again."
+  variables: {}
+  nodes:
+    retry: { type: message, text: "<gray>Delete the demo-arrived player memory to run the walk again." }
+  connections:
+    enter: { from: $event.exec, to: retry.exec }
+    retry-player: { from: $event.player, to: retry.player }

@@ -2,8 +2,10 @@ package nu.miguel.persona.api;
 
 import nu.miguel.persona.Main;
 import nu.miguel.persona.content.Content;
+import nu.miguel.persona.citizens.PersonaTrait;
 import nu.miguel.persona.quest.QuestService;
 import nu.miguel.persona.script.EffectExecutor;
+import nu.miguel.persona.script.ScriptEngine;
 import nu.miguel.persona.state.PlayerState;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -14,6 +16,8 @@ import org.bukkit.scheduler.BukkitTask;
 
 import java.io.File;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
@@ -57,7 +61,27 @@ public final class PersonaApi {
     public void initialLoadComplete(){initialLoadComplete=true;}
     public boolean reload(){return plugin.reloadPersona();}
     public NpcMemoryService memories(){return plugin.memories();}
-    public void signal(net.citizensnpcs.api.npc.NPC npc,Player player,String name,Map<String,Object> data){plugin.behaviors().wake(npc,player,"signal:"+Objects.requireNonNull(name),data==null?Map.of():data);}
+    public void signal(net.citizensnpcs.api.npc.NPC npc,Player player,String name,Map<String,Object> data){signalAsync(npc,player,name,data);}
+    /** Wakes behavior listeners and runs the matching typed NPC-local signal graph. */
+    public CompletionStage<ScriptEngine.Control> signalAsync(net.citizensnpcs.api.npc.NPC npc,Player player,
+                                                              String name,Map<String,Object> data){
+        Objects.requireNonNull(npc,"npc");String signal=Objects.requireNonNull(name,"name").toLowerCase(Locale.ROOT);
+        if(!signal.matches("[a-z][a-z0-9_.-]{0,63}"))
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Invalid NPC signal name"));
+        Map<String,Object> supplied=data==null?Map.of():Map.copyOf(data);
+        plugin.behaviors().wake(npc,player,"signal:"+signal,supplied);
+        PersonaTrait trait=npc.getTraitNullable(PersonaTrait.class);
+        if(trait==null||!trait.bound())return CompletableFuture.completedFuture(ScriptEngine.Control.next());
+        Content.Npc definition=plugin.registry().npcs().get(trait.definitionId());
+        Content.NpcSignal declared=definition==null?null:definition.signals().get(signal);
+        if(declared==null||declared.graph()==null)return CompletableFuture.completedFuture(ScriptEngine.Control.next());
+        Map<String,Object> values=new LinkedHashMap<>(supplied);
+        values.put("npc",definition.id());
+        values.put("npc-instance",Objects.toString(trait.instanceId(),npc.getUniqueId().toString()));
+        if(player!=null)values.put("player",player);
+        EffectExecutor.Context context=new EffectExecutor.Context(player,npc,definition,null,null,null,0,0);
+        return plugin.scripts().runNpcEvent(declared.graph(),values,context);
+    }
 
     public QuestService.Result startQuest(Player p,String id){return plugin.quests().start(p,id);}
     public QuestService.Result finishQuest(Player p,String id){return plugin.quests().finish(p,id);}

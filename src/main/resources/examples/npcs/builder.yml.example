@@ -1,3 +1,4 @@
+content-version: 2
 id: village:builder
 display-name: "<gold>Builder Rowan"
 player-behavior: persona:builder-routine
@@ -13,4 +14,4 @@ dialogues:
   - id: village:builder_thanks
     priority: 100
     when: { type: quest-state, quest: village:supplies, state: completed }
-# Dialogue priorities are descending; hooks are ordinary ordered scripts and player-behavior is per viewer.
+# Dialogue priorities are descending; event hooks are explicit graphs and player-behavior is per viewer.

@@ -1,11 +1,15 @@
+content-version: 2
 id: guild:trial_active
 start: report
 nodes:
   report:
-    script:
-      - type: say
-        text: "Keep going, recruit. Check your quest details for the current trial."
-      - type: say
-        text: "Reporting to me also counts when the combat phase asks you to return."
-      - type: end-dialogue
-# Active-quest dialogue: control-flow targets are stable node IDs within this document.
+    graph:
+      variables: {}
+      nodes:
+        status: { type: say, text: "Keep going, recruit. Check your quest details for the current trial." }
+        hint: { type: say, text: "Reporting to me also counts when the combat phase asks you to return." }
+        end: { type: end-dialogue }
+      connections:
+        enter: { from: $event.exec, to: status.exec }
+        hint: { from: status.success, to: hint.exec }
+        finish: { from: hint.success, to: end.exec }

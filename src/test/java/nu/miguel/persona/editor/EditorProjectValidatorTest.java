@@ -44,7 +44,7 @@ class EditorProjectValidatorTest {
 
     @Test void structuresMissingContentReferences() throws Exception {
         Files.createDirectories(live.resolve("npcs"));
-        String npc = "id: test:guide\ndialogues:\n  - id: test:absent\n";
+        String npc = "content-version: 2\nid: test:guide\ndialogues:\n  - id: test:absent\n";
         List<ContentFile> files = List.of(file("npcs/guide.yml", npc));
         ValidationProject project = new ValidationProject(Protocol.VERSION, UUID.randomUUID(), UUID.randomUUID(),
                 UUID.randomUUID(), EditorScope.NPCS, "b".repeat(64), ContentProjectRevision.compute(files), files);

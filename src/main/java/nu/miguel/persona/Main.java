@@ -51,7 +51,7 @@ public final class Main extends JavaPlugin {
         saveDefaultConfig();
         saveExample("examples/npcs/builder.yml.example");saveExample("examples/dialogues/builder.yml.example");saveExample("examples/dialogues/builder_delivery.yml.example");saveExample("examples/dialogues/builder_thanks.yml.example");saveExample("examples/quests/supplies.yml.example");
         saveExample("examples/npcs/trial_master.yml.example");saveExample("examples/dialogues/trial_intro.yml.example");saveExample("examples/dialogues/trial_active.yml.example");saveExample("examples/dialogues/trial_complete.yml.example");saveExample("examples/quests/adventurers_trial.yml.example");
-        saveExample("examples/scripts.yml.example");
+        saveExample("examples/scripts/quest-success.yml.example");saveExample("examples/scripts/dramatic-warning.yml.example");
         saveExample("examples/behaviors/builder-routine.yml.example");
         saveExample("examples/npcs/harbor_keeper.yml.example");
         saveExample("examples/behaviors/keeper-shared.yml.example");
@@ -109,8 +109,8 @@ public final class Main extends JavaPlugin {
         RollbackApplyResult result=nu.miguel.persona.editor.EditorContentPublisher.rollback(getDataFolder().toPath(),project,delay,api,this::activateEditorCandidate);
         if(result.success()&&editor!=null)editor.contentChanged();return result;
     }
-    private void activateEditorCandidate(Content.Registry candidate)throws Exception{Content.Registry previous=registry.get();try{registry.loadAndReplace(()->candidate);if(dialogues!=null)dialogues.cancelAll("Conversation cancelled by editor content change.");if(behaviors!=null)behaviors.reload();if(memories!=null)memories.flush();}catch(Exception failure){registry.loadAndReplace(()->previous);if(behaviors!=null)behaviors.reload();throw failure;}}
-    public boolean reloadPersona(){reloadConfig();try{Content.Registry candidate=loadContent();if(memories!=null)configureMemories();if(dialogues!=null)dialogues.cancelAll("Conversation cancelled by content reload.");registry.loadAndReplace(()->candidate);if(behaviors!=null)behaviors.reload();if(memories!=null)memories.flush();configureEditor();if(editor!=null)editor.contentChanged();return true;}catch(ContentException e){e.errors().forEach(x->getLogger().severe("Persona reload rejected: "+x));return false;}catch(RuntimeException e){getLogger().severe("Persona reload rejected: "+e.getMessage());return false;}}
+    private void activateEditorCandidate(Content.Registry candidate)throws Exception{Content.Registry previous=registry.get();try{registry.loadAndReplace(()->candidate);if(dialogues!=null)dialogues.cancelAll("Conversation cancelled by editor content change.");if(scripts!=null)scripts.clearState();if(behaviors!=null)behaviors.reload();if(memories!=null)memories.flush();}catch(Exception failure){registry.loadAndReplace(()->previous);if(behaviors!=null)behaviors.reload();throw failure;}}
+    public boolean reloadPersona(){reloadConfig();try{Content.Registry candidate=loadContent();if(memories!=null)configureMemories();if(dialogues!=null)dialogues.cancelAll("Conversation cancelled by content reload.");registry.loadAndReplace(()->candidate);if(scripts!=null)scripts.clearState();if(behaviors!=null)behaviors.reload();if(memories!=null)memories.flush();configureEditor();if(editor!=null)editor.contentChanged();return true;}catch(ContentException e){e.errors().forEach(x->getLogger().severe("Persona reload rejected: "+x));return false;}catch(RuntimeException e){getLogger().severe("Persona reload rejected: "+e.getMessage());return false;}}
     private void configureEditor(){
         boolean enabled=getConfig().getBoolean("editor.enabled",false);
         String hostedUrl=getConfig().getString("editor.hosted-url","https://editor.persona.invalid");
@@ -135,6 +135,7 @@ public final class Main extends JavaPlugin {
     public ScriptEngine scripts(){return scripts;}
     public PersonaApi api(){return api;}
     public PersistentNpcMemoryService memories(){return memories;}
+    public PersistentNpcMemoryService memory(){return memories;}
     public BehaviorService behaviors(){return behaviors;}
     public SqliteStore store(){return store;}
     public EditorClient editor(){return editor;}

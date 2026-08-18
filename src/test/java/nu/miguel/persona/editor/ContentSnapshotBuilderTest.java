@@ -19,7 +19,7 @@ class ContentSnapshotBuilderTest {
         Files.writeString(root.resolve("behaviors/nested/tree.yaml"), "id: test:nested\n");
         Files.writeString(root.resolve("behaviors/ignored.txt"), "secret");
         Files.writeString(root.resolve("npcs/actor.yml"), "id: test:actor\n");
-        Files.writeString(root.resolve("scripts.yml"), "scripts: {}\n");
+        Files.createDirectories(root.resolve("scripts"));Files.writeString(root.resolve("scripts/example.yml"), "content-version: 2\nid: example\n");
 
         var first = ContentSnapshotBuilder.read(root, EditorScope.BEHAVIORS);
         var second = ContentSnapshotBuilder.read(root, EditorScope.BEHAVIORS);
@@ -33,11 +33,11 @@ class ContentSnapshotBuilderTest {
     @Test void allScopeIncludesScriptsAndEveryContentDirectory() throws Exception {
         Files.createDirectories(root.resolve("quests"));
         Files.writeString(root.resolve("quests/story.yml"), "id: test:story\n");
-        Files.writeString(root.resolve("scripts.yml"), "scripts: {}\n");
+        Files.createDirectories(root.resolve("scripts"));Files.writeString(root.resolve("scripts/example.yml"), "content-version: 2\nid: example\n");
 
         var snapshot = ContentSnapshotBuilder.read(root, EditorScope.ALL);
 
-        assertEquals(java.util.List.of("quests/story.yml", "scripts.yml"),
+        assertEquals(java.util.List.of("quests/story.yml", "scripts/example.yml"),
                 snapshot.files().stream().map(file -> file.path()).toList());
     }
 
@@ -54,7 +54,7 @@ class ContentSnapshotBuilderTest {
 
     @Test void rejectsMalformedUtf8InsteadOfSilentlyReplacingSourceBytes() throws Exception {
         Files.createDirectories(root.resolve("scripts"));
-        Files.write(root.resolve("scripts.yml"), new byte[]{(byte) 0xc3, 0x28});
+        Files.write(root.resolve("scripts/bad.yml"), new byte[]{(byte) 0xc3, 0x28});
 
         var error = assertThrows(java.io.IOException.class,
                 () -> ContentSnapshotBuilder.read(root, EditorScope.SCRIPTS));

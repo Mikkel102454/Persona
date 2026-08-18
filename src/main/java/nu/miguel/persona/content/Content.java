@@ -23,15 +23,22 @@ public final class Content {
     }
 
     public record Npc(String id,String displayName,List<DialogueRegistration> dialogues,
-                      List<Step> onInteract,List<Step> onNoDialogue,
+                      ScriptDefinition onClick,ScriptDefinition onDamage,
+                      ScriptDefinition onSpawn,ScriptDefinition onDespawn,
+                      ScriptDefinition onNoDialogue,Map<String,NpcSignal> signals,
                       Map<String,Anchor> anchors,String sharedBehavior,String playerBehavior) {
-        public Npc(String id,String displayName,List<DialogueRegistration> dialogues){this(id,displayName,dialogues,List.of(),List.of(),Map.of(),null,null);}
-        public Npc(String id,String displayName,List<DialogueRegistration> dialogues,List<Step> onInteract,List<Step> onNoDialogue){this(id,displayName,dialogues,onInteract,onNoDialogue,Map.of(),null,null);}
+        public Npc {
+            dialogues=List.copyOf(dialogues);signals=Map.copyOf(signals);anchors=Map.copyOf(anchors);
+        }
+        public Npc(String id,String displayName,List<DialogueRegistration> dialogues){this(id,displayName,dialogues,null,null,null,null,null,Map.of(),Map.of(),null,null);}
+    }
+    public record NpcSignal(String id,Map<String,ScriptDefinition.Parameter> parameters,ScriptDefinition graph) {
+        public NpcSignal { parameters=Map.copyOf(parameters); }
     }
     public record Anchor(String world,double x,double y,double z,float yaw,float pitch) {}
     public record DialogueRegistration(String dialogueId,int priority,Condition condition) {}
     public record Dialogue(String id,String start,Map<String,Node> nodes) {}
-    public record Node(String id,List<Step> script) {}
+    public record Node(String id,ScriptDefinition graph) {}
 
     public sealed interface Step permits Say,If,ChoiceStep,Goto,EndDialogue,Stop,Wait,RandomStep,RunScript,Command {}
     public record WeightedText(String text,int weight) {}
@@ -74,15 +81,16 @@ public final class Content {
 
     public record Quest(String id,String title,String description,List<Phase> phases,
                         Condition requirements,boolean repeatable,Duration cooldown,int maximumCompletions,
-                        Duration timeLimit,List<Step> onStart,List<Step> onComplete,List<Step> onFail,List<Step> onReset) {}
+                        Duration timeLimit,ScriptDefinition onStart,ScriptDefinition onComplete,
+                        ScriptDefinition onFail,ScriptDefinition onReset) {}
     public record Phase(String id,String title,String description,List<Objective> objectives,
-                        List<Step> onStart,List<Step> onComplete,List<PhaseBranch> branches) {}
+                        ScriptDefinition onStart,ScriptDefinition onComplete,List<PhaseBranch> branches) {}
     public record PhaseBranch(Condition condition,String nextPhase) {}
-    public record ProgressHook(long every,List<Step> script) {}
+    public record ProgressHook(long every,ScriptDefinition graph) {}
     public record Objective(String id,String title,String description,ObjectiveType type,
                             Material material,EntityType entity,int amount,String npc,String instance,
                             Position position,double radius,Duration duration,boolean optional,boolean hidden,
-                            List<Step> onStart,ProgressHook onProgress,List<Step> onComplete,
+                            ScriptDefinition onStart,ProgressHook onProgress,ScriptDefinition onComplete,
                             String extensionType,Map<String,Object> options,long requiredProgress) {
         public Objective { options=Map.copyOf(options); }
     }

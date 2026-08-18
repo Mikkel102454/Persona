@@ -1,4 +1,5 @@
 # Standalone example of a durable shared-to-private walking transition.
+content-version: 2
 id: persona:private-walker-demo
 scope: player
 

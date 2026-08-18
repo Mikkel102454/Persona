@@ -1,0 +1,24 @@
+# Copy to plugins/Persona/scripts/dramatic-warning.yml.
+content-version: 2
+id: dramatic-warning
+inputs:
+  player: { type: player, required: true }
+outputs: {}
+variables: {}
+nodes:
+  heartbeat:
+    type: play-sound
+    sound: minecraft:entity.warden.heartbeat
+    pitch: 0.7
+  pause: { type: wait, duration: 1s }
+  warning:
+    type: title
+    title: "<red>Danger"
+    subtitle: "<gray>Prepare yourself"
+connections:
+  enter: { from: $input.exec, to: heartbeat.exec }
+  heartbeat-player: { from: $input.player, to: heartbeat.player }
+  after-heartbeat: { from: heartbeat.success, to: pause.exec }
+  after-pause: { from: pause.success, to: warning.exec }
+  warning-player: { from: $input.player, to: warning.player }
+  leave: { from: warning.success, to: $output.exec }

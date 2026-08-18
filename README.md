@@ -8,7 +8,7 @@ The plugin is designed for server owners who want to build story-driven content 
 
 - Branching, timed dialogue with choices and conditional paths
 - Multi-phase quests with eight built-in objective types
-- Ordered scripts shared by dialogues, quests, and NPC hooks
+- Typed node graphs shared by dialogues, quests, NPC events, and reusable scripts
 - Conditions based on quest state, items, flags, variables, permissions, worlds, and chance
 - Built-in effects for messages, titles, sounds, particles, items, entities, blocks, movement, and more
 - Citizens NPC bindings with conditional dialogue selection
@@ -46,8 +46,10 @@ plugins/Persona/
 |   |-- builder.yml
 |   |-- builder_delivery.yml
 |   `-- builder_thanks.yml
-`-- quests/
-    `-- supplies.yml
+|-- quests/
+|   `-- supplies.yml
+`-- scripts/
+    `-- quest-success.yml
 ```
 
 Reload Persona, create or select an NPC with Citizens, and bind that selected NPC to the definition:
@@ -70,33 +72,32 @@ Persona reads YAML from the following locations:
 
 | Path | Purpose |
 | --- | --- |
-| `plugins/Persona/npcs/*.yml` | NPC definitions and dialogue selection rules |
-| `plugins/Persona/dialogues/*.yml` | Dialogue nodes, speech, choices, and flow |
-| `plugins/Persona/quests/*.yml` | Quests, phases, objectives, and lifecycle scripts |
-| `plugins/Persona/scripts.yml` | Reusable named scripts |
-| `plugins/Persona/behaviors/*.yml` | Shared and per-player NPC behavior trees |
+| `plugins/Persona/npcs/**/*.yml` | NPC definitions, dialogue registrations, signals, and event graphs |
+| `plugins/Persona/dialogues/**/*.yml` | Dialogue nodes and their event graphs |
+| `plugins/Persona/quests/**/*.yml` | Quests, phases, objectives, and lifecycle graphs |
+| `plugins/Persona/scripts/**/*.yml` | One typed reusable graph per file |
+| `plugins/Persona/behaviors/**/*.yml` | Shared and per-player NPC behavior trees |
 | `plugins/Persona/extensions/*.jar` | Optional standalone Persona extensions |
 
-IDs are namespaced, such as `village:builder` or `guild:adventurers_trial`. Script entries are executed in order and use lowercase kebab-case types:
+The five content roots may contain up to eight nested folder levels. IDs are namespaced and independent from paths, so moving `npcs/village/builder.yml` does not change `village:builder` or any reference to it. Script-bearing fields in NPC, dialogue, and quest content are explicit version-2 graphs with stable node and connection keys:
 
 ```yaml
+content-version: 2
 id: village:welcome
 start: greeting
 nodes:
   greeting:
-    script:
-      - type: say
-        text: "Welcome, traveler."
-      - type: choice
-        options:
-          - text: "Do you need help?"
-            script:
-              - type: start-quest
-                quest: village:supplies
-          - text: "Goodbye."
-            script:
-              - type: end-dialogue
+    graph:
+      variables: {}
+      nodes:
+        welcome: { type: say, text: "Welcome, traveler." }
+        finish: { type: end-dialogue }
+      connections:
+        enter: { from: $event.exec, to: welcome.exec }
+        leave: { from: welcome.success, to: finish.exec }
 ```
+
+Old list hooks, `on-interact`, and monolithic `scripts.yml` are intentionally rejected with migration errors. Use `on-click` and individual files under `scripts/`.
 
 For the complete schema, built-in commands and conditions, quest objective types, extension API, and migration notes, see [AUTHORING.md](AUTHORING.md).
 

@@ -127,7 +127,8 @@ public final class EditorClient implements AutoCloseable {
 
     public CompletableFuture<EditorSessionStatus> status(String reference) {
         LiveSession live = resolve(reference);
-        return request(live, "GET", "/status", null, EditorSessionStatus.class);
+        return request(live, "GET", "/status", null, EditorSessionStatus.class)
+                .thenApply(status -> { live.updateCapabilities(status.grantedCapabilities()); return status; });
     }
 
     public CompletableFuture<EditorSessionStatus> trust(String reference, Set<Capability> approved) {
@@ -136,28 +137,14 @@ public final class EditorClient implements AutoCloseable {
                 approved.stream().filter(live.requestedCapabilities::contains)
                         .filter(capability -> capability != Capability.CONTENT_VIEW)
                         .collect(java.util.stream.Collectors.toUnmodifiableSet()));
-        return request(live, "PUT", "/capabilities", body, EditorSessionStatus.class);
+        return request(live, "PUT", "/capabilities", body, EditorSessionStatus.class)
+                .thenApply(status -> { live.updateCapabilities(status.grantedCapabilities()); return status; });
     }
 
     public CompletableFuture<EditorSessionStatus> revokeTrust(String reference) {
-        return request(resolve(reference), "DELETE", "/capabilities", null, EditorSessionStatus.class);
-    }
-
-    public CompletableFuture<PublishStatusResponse> apply(String reference, String confirmationCode) {
         LiveSession live = resolve(reference);
-        PublishConfirmRequest confirmation = new PublishConfirmRequest(Protocol.VERSION, confirmationCode);
-        return request(live, "POST", "/publishes/confirm", confirmation, PublishProject.class)
-                .thenCompose(project -> {
-                    CompletableFuture<PublishApplyResult> applied = new CompletableFuture<>();
-                    plugin.getServer().getScheduler().runTask(plugin, () -> {
-                        try { applied.complete(plugin.publishEditorProject(project)); }
-                        catch (RuntimeException error) { applied.complete(new PublishApplyResult(Protocol.VERSION,
-                                project.publishId(), false, project.baseRevision(), null,
-                                Objects.toString(error.getMessage(), error.getClass().getSimpleName()))); }
-                    });
-                    return applied.thenCompose(result -> request(live, "POST", "/publishes/" + project.publishId()
-                            + "/result", result, PublishStatusResponse.class));
-                });
+        return request(live, "DELETE", "/capabilities", null, EditorSessionStatus.class)
+                .thenApply(status -> { live.updateCapabilities(status.grantedCapabilities()); return status; });
     }
 
     public CompletableFuture<PublishStatusResponse> publishStatus(String reference, UUID publishId) {
@@ -228,10 +215,10 @@ public final class EditorClient implements AutoCloseable {
         try {
             ContentSnapshotBuilder.Project project = ContentSnapshotBuilder.read(plugin.getDataFolder().toPath(), scope);
             ContentSnapshot unsigned = new ContentSnapshot(Protocol.VERSION, response.sessionId(), project.revision(),
-                    ContentFormat.CURRENT, Instant.now(), identity.publicKey(), project.files(), "");
+                    ContentFormat.CURRENT, Instant.now(), identity.publicKey(), project.files(),project.folders(),project.manifestDigest(), "");
             ContentSnapshot snapshot = new ContentSnapshot(unsigned.protocolVersion(), unsigned.sessionId(),
                     unsigned.revision(), unsigned.contentFormatVersion(), unsigned.createdAt(),
-                    unsigned.installationPublicKey(), unsigned.files(), identity.sign(unsigned.signingInput()));
+                    unsigned.installationPublicKey(), unsigned.files(),unsigned.folders(),unsigned.manifestDigest(), identity.sign(unsigned.signingInput()));
             HttpRequest request = HttpRequest.newBuilder(service.resolve("/api/v1/editor/sessions/"
                             + response.sessionId() + "/snapshot"))
                     .timeout(Duration.ofSeconds(20))
@@ -282,6 +269,11 @@ public final class EditorClient implements AutoCloseable {
     private static String metadataRevision(List<String> manifest) throws Exception {MessageDigest digest=MessageDigest.getInstance("SHA-256");
         for(String line:manifest){digest.update(line.getBytes(StandardCharsets.UTF_8));digest.update((byte)'\n');}return HexFormat.of().formatHex(digest.digest());}
     private static String sha256(String source) throws Exception {return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(source.getBytes(StandardCharsets.UTF_8)));}
+    private static String rootMessage(Throwable error) {
+        Throwable cause = error;
+        while (cause.getCause() != null && cause.getCause() != cause) cause = cause.getCause();
+        return Objects.toString(cause.getMessage(), cause.getClass().getSimpleName());
+    }
 
     public boolean matchesConfiguration(String hostedUrl, boolean insecureTransport) {
         try { return service.equals(URI.create(hostedUrl)) && allowInsecure == insecureTransport; }
@@ -321,12 +313,14 @@ public final class EditorClient implements AutoCloseable {
         List<LiveStateSnapshot.Quest> quests=changed(previous.quests(),current.quests(),value->"quest:"+value.playerId()+":"+value.questId(),removed);
         List<LiveStateSnapshot.Dialogue> dialogues=changed(previous.dialogues(),current.dialogues(),value->"dialogue:"+value.playerId(),removed);
         List<LiveStateSnapshot.Memory> memories=changed(previous.memories(),current.memories(),value->"memory:"+Objects.toString(value.playerId(),"global")+":"+value.npcDefinition()+":"+value.npcInstance()+":"+value.key(),removed);
+        long lastTrace=previous.traces().stream().mapToLong(LiveStateSnapshot.GraphTrace::sequence).max().orElse(0);
+        List<LiveStateSnapshot.GraphTrace> traces=current.traces().stream().filter(value->value.sequence()>lastTrace).toList();
         boolean serverChanged=!Objects.equals(previous.server(),current.server());
-        if(players.isEmpty()&&npcs.isEmpty()&&behaviors.isEmpty()&&quests.isEmpty()&&dialogues.isEmpty()&&memories.isEmpty()&&removed.isEmpty()&&!serverChanged)return null;
-        return new LiveStateSnapshot(Protocol.VERSION,current.subscriptionId(),revision,current.capturedAt(),false,players,npcs,behaviors,quests,dialogues,memories,serverChanged?current.server():null,removed);
+        if(players.isEmpty()&&npcs.isEmpty()&&behaviors.isEmpty()&&quests.isEmpty()&&dialogues.isEmpty()&&memories.isEmpty()&&traces.isEmpty()&&removed.isEmpty()&&!serverChanged)return null;
+        return new LiveStateSnapshot(Protocol.VERSION,current.subscriptionId(),revision,current.capturedAt(),false,players,npcs,behaviors,quests,dialogues,memories,traces,serverChanged?current.server():null,removed);
     }
     private static <T> List<T> changed(List<T> before,List<T> after,Function<T,String> key,List<String> removed){Map<String,T> old=new LinkedHashMap<>();before.forEach(value->old.put(key.apply(value),value));List<T> result=new ArrayList<>();Set<String> present=new HashSet<>();for(T value:after){String id=key.apply(value);present.add(id);if(!Objects.equals(old.get(id),value))result.add(value);}old.keySet().stream().filter(id->!present.contains(id)).forEach(removed::add);return List.copyOf(result);}
-    private static LiveStateSnapshot version(LiveStateSnapshot value,long revision,boolean full,List<String> removed){return new LiveStateSnapshot(Protocol.VERSION,value.subscriptionId(),revision,value.capturedAt(),full,value.players(),value.npcs(),value.behaviors(),value.quests(),value.dialogues(),value.memories(),value.server(),removed);}
+    private static LiveStateSnapshot version(LiveStateSnapshot value,long revision,boolean full,List<String> removed){return new LiveStateSnapshot(Protocol.VERSION,value.subscriptionId(),revision,value.capturedAt(),full,value.players(),value.npcs(),value.behaviors(),value.quests(),value.dialogues(),value.memories(),value.traces(),value.server(),removed);}
 
     private final class LiveSession implements WebSocket.Listener {
         private final SessionCreateResponse response;
@@ -341,12 +335,15 @@ public final class EditorClient implements AutoCloseable {
         private final AtomicLong sequence = new AtomicLong();
         private final AtomicLong receivedSequence = new AtomicLong();
         private final AtomicBoolean reconnectScheduled = new AtomicBoolean();
+        private final AtomicBoolean publishClaimInFlight = new AtomicBoolean();
         private final Map<UUID,LiveFeed> liveFeeds=new ConcurrentHashMap<>();
         private final StringBuilder fragments = new StringBuilder();
         private volatile WebSocket socket;
         private volatile boolean closed;
         private volatile boolean everConnected;
         private volatile int reconnectAttempt;
+        private volatile Set<Capability> grantedCapabilities = Set.of(Capability.CONTENT_VIEW);
+        private volatile BukkitTask publishPollTask;
 
         private LiveSession(SessionCreateResponse response, EditorScope scope, SessionRestrictions restrictions, URI socketUri,
                             String initiatorId, String initiatorName, Set<Capability> requestedCapabilities) {
@@ -370,6 +367,50 @@ public final class EditorClient implements AutoCloseable {
         }
         private void startHeartbeat() {
             plugin.getServer().getScheduler().runTaskLaterAsynchronously(plugin, this::heartbeat, 20L * 20L);
+        }
+        private synchronized void updateCapabilities(Set<Capability> capabilities) {
+            grantedCapabilities = capabilities == null ? Set.of() : Set.copyOf(capabilities);
+            if (grantedCapabilities.contains(Capability.CONTENT_PUBLISH)) startPublishPolling();
+            else stopPublishPolling();
+        }
+        private synchronized void startPublishPolling() {
+            if (closed || publishPollTask != null) return;
+            publishPollTask = plugin.getServer().getScheduler().runTaskTimerAsynchronously(
+                    plugin, this::pollPublication, 1L, 40L);
+        }
+        private synchronized void stopPublishPolling() {
+            if (publishPollTask != null) publishPollTask.cancel();
+            publishPollTask = null;
+        }
+        private void pollPublication() {
+            if (closed || !grantedCapabilities.contains(Capability.CONTENT_PUBLISH)
+                    || !publishClaimInFlight.compareAndSet(false, true)) return;
+            claimPublication().thenCompose(project -> project == null
+                    ? CompletableFuture.completedFuture(null) : applyPublication(project))
+                    .whenComplete((ignored, error) -> {
+                        publishClaimInFlight.set(false);
+                        if (error != null && !closed)
+                            plugin.getLogger().warning("Editor publication failed: " + rootMessage(error));
+                    });
+        }
+        private CompletableFuture<PublishProject> claimPublication() {
+            HttpRequest request = HttpRequest.newBuilder(service.resolve("/api/v1/editor/sessions/" + id + "/publishes/claim"))
+                    .timeout(Duration.ofSeconds(10)).header("Authorization", "Bearer " + response.pluginLeaseToken())
+                    .POST(HttpRequest.BodyPublishers.noBody()).build();
+            return http.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                    .thenApply(reply -> reply.statusCode() == 204
+                            ? null : decode(reply, PublishProject.class));
+        }
+        private CompletableFuture<PublishStatusResponse> applyPublication(PublishProject project) {
+            CompletableFuture<PublishApplyResult> applied = new CompletableFuture<>();
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                try { applied.complete(plugin.publishEditorProject(project)); }
+                catch (RuntimeException error) { applied.complete(new PublishApplyResult(Protocol.VERSION,
+                        project.publishId(), false, project.baseRevision(), null,
+                        Objects.toString(error.getMessage(), error.getClass().getSimpleName()))); }
+            });
+            return applied.thenCompose(result -> request(this, "POST", "/publishes/" + project.publishId()
+                    + "/result", result, PublishStatusResponse.class));
         }
         private void heartbeat() {
             if (closed || System.currentTimeMillis() >= expiresAt) return;
@@ -532,6 +573,7 @@ public final class EditorClient implements AutoCloseable {
         }
         private void close() {
             closed = true;
+            stopPublishPolling();
             liveFeeds.values().forEach(LiveFeed::close);liveFeeds.clear();
             sessions.remove(id, this);
             HttpRequest revoke = HttpRequest.newBuilder(service.resolve("/api/v1/editor/sessions/" + id))

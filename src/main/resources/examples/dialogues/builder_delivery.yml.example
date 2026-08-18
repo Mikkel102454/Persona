@@ -1,32 +1,41 @@
+content-version: 2
 id: village:builder_delivery
 start: check-logs
 nodes:
   check-logs:
-    script:
-      - type: say
-        text: "Let me see whether you brought ten oak logs."
-      - type: deliver-items
-        quest: village:supplies
-        objective: oak_logs
-        on-success:
-          - type: goto
-            node: delivered
-        on-failure:
-          - type: goto
-            node: missing
+    graph:
+      variables: {}
+      nodes:
+        prompt: { type: say, text: "Let me see whether you brought ten oak logs." }
+        deliver: { type: deliver-items, quest: village:supplies, objective: oak_logs }
+        success: { type: goto, node: delivered }
+        failure: { type: goto, node: missing }
+      connections:
+        enter: { from: $event.exec, to: prompt.exec }
+        check: { from: prompt.success, to: deliver.exec }
+        deliver-player: { from: $event.player, to: deliver.player }
+        delivered: { from: deliver.success, to: success.exec }
+        missing: { from: deliver.failure, to: failure.exec }
   delivered:
-    script:
-      - type: say
-        text: "Perfect! These are exactly what I needed."
-      - type: give-item
-        material: minecraft:emerald
-        amount: 3
-      - type: say
-        text: "Take these emeralds for your trouble."
-      - type: end-dialogue
+    graph:
+      variables: {}
+      nodes:
+        line: { type: say, text: "Perfect! These are exactly what I needed." }
+        reward: { type: give-item, material: minecraft:emerald, amount: 3 }
+        thanks: { type: say, text: "Take these emeralds for your trouble." }
+        end: { type: end-dialogue }
+      connections:
+        enter: { from: $event.exec, to: line.exec }
+        reward: { from: line.success, to: reward.exec }
+        reward-player: { from: $event.player, to: reward.player }
+        thanks: { from: reward.success, to: thanks.exec }
+        finish: { from: thanks.success, to: end.exec }
   missing:
-    script:
-      - type: say
-        text: "You still need to bring me ten oak logs."
-      - type: end-dialogue
-# Delivery uses an atomic quest/objective command; success and failure handlers resume only after the result.
+    graph:
+      variables: {}
+      nodes:
+        line: { type: say, text: "You still need to bring me ten oak logs." }
+        end: { type: end-dialogue }
+      connections:
+        enter: { from: $event.exec, to: line.exec }
+        finish: { from: line.success, to: end.exec }

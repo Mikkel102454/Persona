@@ -504,8 +504,8 @@ AssetChannel acceptance example:
 - [x] Run complete server-side parsing and atomic validation without activation.
 - [x] Return structured file, line, node, and reference errors to the hosted editor.
 - [x] Show a semantic diff for behaviors, NPCs, quests, dialogues, and scripts.
-- [x] Require `/persona editor apply <one-time-code>` or an equivalent explicit trusted
-      confirmation before the first publish from a browser session.
+- [x] Apply a validated browser publication directly through the explicitly trusted
+      session, without a second in-game command.
 - [x] Revalidate permissions, base revision, schemas, and all extension node types at
       publish time.
 - [x] Write a recoverable content backup before applying a published revision.

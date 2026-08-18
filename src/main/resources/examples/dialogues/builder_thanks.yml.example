@@ -1,12 +1,16 @@
+content-version: 2
 id: village:builder_thanks
 start: thanks
 nodes:
   thanks:
-    script:
-      - type: say
-        text: "The workshop is coming along nicely. Thanks again!"
-      - type: set-flag
-        flag: thanked_builder
-        value: true
-      - type: end-dialogue
-# This higher-priority follow-up is selected by the NPC registration conditions, not by file order.
+    graph:
+      variables: {}
+      nodes:
+        line: { type: say, text: "The workshop is coming along nicely. Thanks again!" }
+        flag: { type: set-flag, flag: thanked_builder, value: true }
+        end: { type: end-dialogue }
+      connections:
+        enter: { from: $event.exec, to: line.exec }
+        remember: { from: line.success, to: flag.exec }
+        remember-player: { from: $event.player, to: flag.player }
+        finish: { from: flag.success, to: end.exec }

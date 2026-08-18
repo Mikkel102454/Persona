@@ -41,6 +41,7 @@ public final class EffectExecutor {
         public Context quest(Quest q) { return new Context(player,citizensNpc,npc,dialogue,q,phase,objective,current,required); }
         public Context phase(Phase p) { return new Context(player,citizensNpc,npc,dialogue,quest,p,objective,current,required); }
         public Context objective(Objective o,long c,long r) { return new Context(player,citizensNpc,npc,dialogue,quest,phase,o,c,r); }
+        public Context withPlayer(Player target) { return new Context(target,citizensNpc,npc,dialogue,quest,phase,objective,current,required); }
     }
 
     private static final Pattern FLAG=Pattern.compile("<flag:([a-zA-Z0-9_.-]+)>");

@@ -1,5 +1,6 @@
 # A manually bound Citizens NPC remains the shared actor at the pier.
 # The shared tree patrols it; the player tree can privately relocate or hide it.
+content-version: 2
 id: harbor:keeper
 display-name: "<aqua>Keeper Mira"
 shared-behavior: harbor:keeper-shared
@@ -11,10 +12,18 @@ anchors:
   overlook: { world: world, x: 44, y: 76, z: -20, yaw: 135 }
   festival-square: { world: world, x: 8, y: 64, z: 16, yaw: 0 }
 
-on-interact:
-  - type: message
-    text: "<gray>Mira watches the horizon. Trust: <memory:trust>"
+on-click:
+  variables: {}
+  nodes:
+    greeting: { type: message, text: "<gray>Mira watches the horizon. Trust: <memory:trust>" }
+  connections:
+    enter: { from: $event.exec, to: greeting.exec }
+    greeting-player: { from: $event.player, to: greeting.player }
 
 on-no-dialogue:
-  - type: message
-    text: "<gray>Try signaling kindness or festival-start through the API."
+  variables: {}
+  nodes:
+    hint: { type: message, text: "<gray>Try signaling kindness or festival-start through the API." }
+  connections:
+    enter: { from: $event.exec, to: hint.exec }
+    hint-player: { from: $event.player, to: hint.player }

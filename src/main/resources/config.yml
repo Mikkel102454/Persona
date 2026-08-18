@@ -14,8 +14,8 @@ editor:
   # Memory values stay redacted unless their key is in one of these namespaces.
   memory-visible-namespaces: []
   enabled: false
-  # Publication additionally requires persona.admin.editor.publish, explicit session
-  # trust, a short-lived browser-generated confirmation code, and /persona editor apply.
+  # Publication additionally requires persona.admin.editor.publish and explicit session
+  # trust. Once trusted, the browser's Publish button applies through the connected server.
   publish-enabled: false
   # The centrally hosted Spring Boot service. Production deployments must use HTTPS.
   hosted-url: https://editor.persona.invalid

@@ -81,10 +81,9 @@ public final class EditorProjectValidator {
     }
 
     private static void clearScope(Path root, EditorScope scope) throws IOException {
-        if (scope == EditorScope.ALL || scope == EditorScope.CONTENT || scope == EditorScope.SCRIPTS)
-            Files.deleteIfExists(root.resolve("scripts.yml"));
+        if(scope==EditorScope.ALL||scope==EditorScope.CONTENT)Files.deleteIfExists(root.resolve(ProjectManifest.PATH));
         Map<EditorScope, String> directories = Map.of(EditorScope.BEHAVIORS, "behaviors", EditorScope.NPCS, "npcs",
-                EditorScope.DIALOGUES, "dialogues", EditorScope.QUESTS, "quests");
+                EditorScope.DIALOGUES, "dialogues", EditorScope.QUESTS, "quests",EditorScope.SCRIPTS,"scripts");
         for (var entry : directories.entrySet())
             if (scope == EditorScope.ALL || scope == EditorScope.CONTENT || scope == entry.getKey())
                 deleteTree(root.resolve(entry.getValue()));
@@ -126,9 +125,9 @@ public final class EditorProjectValidator {
     }
     private static boolean allowed(EditorScope scope, String path) {
         return switch (scope) {
-            case ALL, CONTENT -> path.equals("scripts.yml") || path.startsWith("behaviors/") || path.startsWith("npcs/")
+            case ALL, CONTENT -> path.equals(ProjectManifest.PATH)||path.startsWith("scripts/") || path.startsWith("behaviors/") || path.startsWith("npcs/")
                     || path.startsWith("dialogues/") || path.startsWith("quests/");
-            case SCRIPTS -> path.equals("scripts.yml"); case BEHAVIORS -> path.startsWith("behaviors/");
+            case SCRIPTS -> path.startsWith("scripts/"); case BEHAVIORS -> path.startsWith("behaviors/");
             case NPCS -> path.startsWith("npcs/"); case DIALOGUES -> path.startsWith("dialogues/");
             case QUESTS -> path.startsWith("quests/");
         };

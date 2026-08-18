@@ -25,28 +25,36 @@ class ContentValidationCompatibilityTest {
                   children: [ { id: wait, type: wait, duration: 1s } ]
                 """);
         Files.writeString(root.resolve("npcs/a.yml"),"""
+                content-version: 2
                 id: test:npc
                 display-nam: Typo
                 """);
         Files.writeString(root.resolve("dialogues/a.yml"),"""
+                content-version: 2
                 id: test:dialogue
                 start: missing
                 nodes: {}
                 """);
         Files.writeString(root.resolve("quests/a.yml"),"""
+                content-version: 2
                 id: test:quest
                 phases: []
                 """);
-        Files.writeString(root.resolve("scripts.yml"),"""
-                scripts:
-                  broken: [ { type: say } ]
+        Files.writeString(root.resolve("scripts/broken.yml"),"""
+                content-version: 2
+                id: broken
+                inputs: {}
+                outputs: {}
+                variables: {}
+                nodes: []
+                connections: {}
                 """);
         ContentException failure=assertThrows(ContentException.class,()->loader().load());
         assertTrue(failure.errors().stream().anyMatch(x->x.contains("behaviors/a.yml")&&x.contains("duraton")),failure.errors().toString());
         assertTrue(failure.errors().stream().anyMatch(x->x.contains("npcs/a.yml")&&x.contains("display-name")));
         assertTrue(failure.errors().stream().anyMatch(x->x.contains("dialogues/a.yml")));
         assertTrue(failure.errors().stream().anyMatch(x->x.contains("quests/a.yml")));
-        assertTrue(failure.errors().stream().anyMatch(x->x.contains("scripts.yml")));
+        assertTrue(failure.errors().stream().anyMatch(x->x.contains("scripts/broken.yml")));
         assertTrue(failure.errors().stream().allMatch(x->x.matches(".*:\\d+:\\d+: .*")),failure.errors().toString());
     }
 
@@ -72,9 +80,9 @@ class ContentValidationCompatibilityTest {
     }
 
     @Test void contentFormatIsIndependentAndRejectsFutureVersion()throws Exception{
-        dirs();Files.writeString(root.resolve("npcs/a.yml"),"content-version: 2\nid: test:npc\n");ContentException failure=assertThrows(ContentException.class,()->loader().load());assertTrue(failure.getMessage().contains("supported version is 1"));
+        dirs();Files.writeString(root.resolve("npcs/a.yml"),"content-version: 3\nid: test:npc\n");ContentException failure=assertThrows(ContentException.class,()->loader().load());assertTrue(failure.getMessage().contains("requires content-version: 2"));
     }
 
-    private void dirs()throws Exception{for(String name:new String[]{"behaviors","npcs","dialogues","quests"})Files.createDirectories(root.resolve(name));}
+    private void dirs()throws Exception{for(String name:new String[]{"behaviors","npcs","dialogues","quests","scripts"})Files.createDirectories(root.resolve(name));}
     private ContentLoader loader(){return new ContentLoader(root.toFile(),Duration.ZERO,x->Material.STONE,x->EntityType.ZOMBIE);}
 }

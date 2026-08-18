@@ -1,4 +1,5 @@
 # One runtime of this tree exists for each player viewing this logical NPC.
+content-version: 2
 id: harbor:keeper-player
 scope: player
 

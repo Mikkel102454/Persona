@@ -1,0 +1,21 @@
+# Copy to plugins/Persona/scripts/quest-success.yml.
+content-version: 2
+id: quest-success
+inputs:
+  player: { type: player, required: true }
+outputs: {}
+variables: {}
+nodes:
+  sound:
+    type: play-sound
+    sound: minecraft:ui.toast.challenge_complete
+  particles:
+    type: particle
+    particle: minecraft:happy_villager
+    count: 20
+connections:
+  enter: { from: $input.exec, to: sound.exec }
+  sound-player: { from: $input.player, to: sound.player }
+  after-sound: { from: sound.success, to: particles.exec }
+  particles-player: { from: $input.player, to: particles.player }
+  leave: { from: particles.success, to: $output.exec }

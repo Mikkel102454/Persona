@@ -32,7 +32,8 @@ public final class EditorContentPublisher {
                 if (!staged.report().valid())
                     return failure(project, live.revision(), null, "Authoritative validation failed: "
                             + String.join(" | ", staged.report().errors()));
-                Path backup = backupRoot(liveRoot, project.publishId()); backupId = liveRoot.relativize(backup).toString().replace('\\', '/');
+                backupId = backupId(project.publishId());
+                Path backup = safe(liveRoot, backupId);
                 backup(liveRoot, project.scope(), backup, live.files(), project);
                 try {
                     replaceScope(liveRoot, project.scope(), project.files());
@@ -58,7 +59,7 @@ public final class EditorContentPublisher {
                     || rollback.publishId() == null || rollback.sessionId() == null || rollback.scope() == null
                     || rollback.currentRevision() == null || rollback.targetRevision() == null || rollback.backupId() == null)
                 throw new IOException("Invalid rollback project envelope");
-            String expectedBackup = "backups/editor-content/" + rollback.publishId();
+            String expectedBackup = backupId(rollback.publishId());
             if (!expectedBackup.equals(rollback.backupId())) throw new IOException("Rollback backup identity does not match publication");
             Path backup = safe(liveRoot, rollback.backupId());
             Properties manifest = new Properties();
@@ -139,8 +140,8 @@ public final class EditorContentPublisher {
         if (!target.startsWith(normalizedRoot)) throw new IOException("Content path escapes Persona data folder");
         return target;
     }
-    private static Path backupRoot(Path liveRoot, UUID publishId) {
-        return liveRoot.toAbsolutePath().normalize().resolve("backups/editor-content").resolve(publishId.toString());
+    private static String backupId(UUID publishId) {
+        return "backups/editor-content/" + publishId;
     }
     private static String safeRevision(Path root, PublishProject project) {
         try { return project == null || project.scope() == null ? "0".repeat(64)

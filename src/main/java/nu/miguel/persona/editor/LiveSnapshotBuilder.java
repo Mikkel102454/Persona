@@ -30,9 +30,10 @@ public final class LiveSnapshotBuilder {
         List<LiveStateSnapshot.Quest> quests=topics.contains(LiveTopic.QUESTS)?quests(plugin,filter):List.of();
         List<LiveStateSnapshot.Dialogue> dialogues=topics.contains(LiveTopic.DIALOGUES)?dialogues(plugin,filter):List.of();
         List<LiveStateSnapshot.Memory> memories=topics.contains(LiveTopic.MEMORIES)?memories(plugin,filter):List.of();
+        List<LiveStateSnapshot.GraphTrace> traces=topics.contains(LiveTopic.TRACES)?traces(plugin,filter):List.of();
         var counts=plugin.behaviors().projections().counts();var metrics=plugin.behaviors().liveMetrics();LiveStateSnapshot.Server server=topics.contains(LiveTopic.SERVER)
                 ?new LiveStateSnapshot.Server(metrics.evaluated(),metrics.tickNanos(),metrics.wakeQueue(),behaviors.stream().mapToLong(LiveStateSnapshot.Behavior::droppedEvents).sum(),metrics.persistenceQueue(),counts.server(),counts.serverLimit(),false):null;
-        return new LiveStateSnapshot(Protocol.VERSION,request.subscriptionId(),revision,System.currentTimeMillis(),full,players,npcs,behaviors,quests,dialogues,memories,server,List.of());
+        return new LiveStateSnapshot(Protocol.VERSION,request.subscriptionId(),revision,System.currentTimeMillis(),full,players,npcs,behaviors,quests,dialogues,memories,traces,server,List.of());
     }
     private static List<LiveStateSnapshot.Player> players(Main plugin,Filter filter,List<LiveStateSnapshot.Behavior> behaviors){List<LiveStateSnapshot.Player> result=new ArrayList<>();for(Player player:plugin.getServer().getOnlinePlayers()){
         if(!filter.player(player.getUniqueId())||!filter.world(player.getWorld().getName()))continue;PlayerState state=plugin.states().require(player);List<String> active=state==null?List.of():state.quests().keySet().stream().sorted().toList();int runtimes=(int)behaviors.stream().filter(value->player.getUniqueId().equals(value.playerId())).count();result.add(new LiveStateSnapshot.Player(player.getUniqueId(),player.getWorld().getName(),active,runtimes));}return List.copyOf(result);}
@@ -56,6 +57,31 @@ public final class LiveSnapshotBuilder {
     private static List<LiveStateSnapshot.Dialogue> dialogues(Main plugin,Filter filter){return plugin.dialogues().liveSummaries().stream().filter(value->filter.player(value.playerId())&&filter.npc(value.npcDefinition(),value.npcInstance())).map(value->new LiveStateSnapshot.Dialogue(value.playerId(),value.dialogueId(),value.nodeId(),value.state(),value.npcDefinition(),value.npcInstance(),value.currentLine(),value.eligibleChoices(),value.waitDeadline(),value.cancellationReason())).toList();}
     private static List<LiveStateSnapshot.Memory> memories(Main plugin,Filter filter){Set<String> visible=new HashSet<>(plugin.getConfig().getStringList("editor.memory-visible-namespaces"));List<LiveStateSnapshot.Memory> result=new ArrayList<>();for(NpcMemoryService.Entry entry:plugin.memories().entries()){
         if(entry.player()!=null&&!filter.player(entry.player())||!filter.npc(entry.npcDefinition(),entry.instance()))continue;boolean reveal=visible.stream().anyMatch(prefix->entry.key().equals(prefix)||entry.key().startsWith(prefix+"."));String key=reveal?entry.key():"redacted:"+digest(entry.key()),value=reveal?String.valueOf(entry.value().value()):"<redacted>";var memory=entry.value();result.add(new LiveStateSnapshot.Memory(entry.player(),entry.npcDefinition(),entry.instance(),key,memory.type().name(),value,memory.createdAt().toEpochMilli(),memory.updatedAt().toEpochMilli(),memory.expiresAt()==null?null:memory.expiresAt().toEpochMilli(),memory.source(),entry.scope().name(),!reveal));}return List.copyOf(result);}
+    private static List<LiveStateSnapshot.GraphTrace> traces(Main plugin,Filter filter){
+        if(filter.requested().tracepoints().isEmpty()&&filter.requested().watchedPins().isEmpty())return List.of();
+        List<LiveStateSnapshot.GraphTrace> result=new ArrayList<>();
+        for(var trace:plugin.scripts().graphTraceHistory()){
+            if(trace.player()!=null&&!filter.player(trace.player()))continue;
+            if(trace.npcDefinition()!=null&&!filter.npc(trace.npcDefinition(),trace.npcInstance()))continue;
+            String base=trace.graph().contains("#")?trace.graph().substring(0,trace.graph().indexOf('#')):trace.graph();
+            String token=pinToken(trace.node());
+            Set<String> owners=new LinkedHashSet<>(filter.requested().tracepoints());
+            for(String watch:filter.requested().watchedPins()){int marker=watch.indexOf(":input:");if(marker<0)marker=watch.indexOf(":output:");if(marker>0)owners.add(watch.substring(0,marker));}
+            String owner=owners.stream().filter(id->id.matches("(?:npc|dialogue|quest|script):"+java.util.regex.Pattern.quote(base)+"#.*")
+                    &&id.endsWith(":node:"+token)).findFirst().orElse(null);
+            if(owner==null)continue;
+            Map<String,String> watched=new LinkedHashMap<>();
+            for(String watch:filter.requested().watchedPins())if(watch.startsWith(owner+":")){
+                String label=watch.substring(watch.lastIndexOf(':')+1);
+                trace.values().forEach((pin,value)->{if(pinToken(pin).equals(label))watched.put(watch,value);});
+            }
+            if(!filter.requested().tracepoints().contains(owner)&&watched.isEmpty())continue;
+            result.add(new LiveStateSnapshot.GraphTrace(trace.sequence(),trace.at(),trace.graph(),owner,trace.node(),trace.status(),
+                    trace.player(),trace.npcInstance(),watched,trace.detail()));
+        }
+        return result.size()<=1000?List.copyOf(result):List.copyOf(result.subList(result.size()-1000,result.size()));
+    }
+    private static String pinToken(String value){return(value==null?"":value).replaceAll("[^A-Za-z0-9_.:-]","_");}
     private static LiveStateSnapshot.Position position(Location value){return new LiveStateSnapshot.Position(value.getWorld().getName(),value.getX(),value.getY(),value.getZ(),value.getYaw(),value.getPitch());}
     private static LiveStateSnapshot.Position position(BehaviorRuntime.LogicalPosition value){return new LiveStateSnapshot.Position(value.world(),value.x(),value.y(),value.z(),value.yaw(),value.pitch());}
     private static UUID uuid(String value){try{return UUID.fromString(value);}catch(IllegalArgumentException error){return null;}}

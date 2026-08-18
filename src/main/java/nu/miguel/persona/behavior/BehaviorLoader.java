@@ -40,7 +40,7 @@ public final class BehaviorLoader {
         Map<String,BehaviorDefinition> result=new LinkedHashMap<>();File[] files=folder.listFiles(f->f.isFile()&&(f.getName().endsWith(".yml")||f.getName().endsWith(".yaml")));
         if(files==null)return new Candidate(Map.of(),List.copyOf(errors),Map.of());Arrays.sort(files,Comparator.comparing(File::getName));
         for(File file:files){source=Validation.Source.read(root,file);try{
-            YamlConfiguration yaml=new YamlConfiguration();yaml.load(file);Validation.keys(yaml,ROOT_KEYS);ContentFormat.validate(yaml,source);
+            YamlConfiguration yaml=new YamlConfiguration();yaml.load(file);Validation.keys(yaml,ROOT_KEYS);ContentFormat.validateBehavior(yaml);
             String id=id(yaml.getString("id"),"id");BehaviorScope scope=parseScope(yaml.getString("scope","player"));ConfigurationSection rootNode=yaml.getConfigurationSection("root");if(rootNode==null)throw new IllegalArgumentException("missing root node");
             LinkedHashMap<String,BehaviorNode> nodes=new LinkedHashMap<>();BehaviorNode parsed=node(rootNode,scope,nodes);BehaviorDefinition definition=new BehaviorDefinition(id,scope,parsed,nodes,hash(canonical(parsed)));
             BehaviorDefinition previous=result.putIfAbsent(id,definition);if(previous!=null){String first=behaviorSources.get(id);throw new IllegalArgumentException("conflicting behavior ID "+id+"; first declared at "+first);}

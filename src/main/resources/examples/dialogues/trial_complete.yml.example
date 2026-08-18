@@ -1,12 +1,16 @@
+content-version: 2
 id: guild:trial_complete
 start: congratulations
 nodes:
   congratulations:
-    script:
-      - type: say
-        text: "You passed every part of the Adventurer's Trial."
-      - type: set-flag
-        flag: acknowledged_trial_master
-        value: true
-      - type: end-dialogue
-# Completion dialogue is selected from persisted quest state and ends explicitly after its ordered script.
+    graph:
+      variables: {}
+      nodes:
+        line: { type: say, text: "You passed every part of the Adventurer's Trial." }
+        flag: { type: set-flag, flag: acknowledged_trial_master, value: true }
+        end: { type: end-dialogue }
+      connections:
+        enter: { from: $event.exec, to: line.exec }
+        remember: { from: line.success, to: flag.exec }
+        remember-player: { from: $event.player, to: flag.player }
+        finish: { from: flag.success, to: end.exec }

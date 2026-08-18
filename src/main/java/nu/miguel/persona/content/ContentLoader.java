@@ -14,6 +14,8 @@ import org.bukkit.entity.EntityType;
 
 import java.io.File;
 import java.time.Duration;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.function.Function;
 
@@ -27,6 +29,7 @@ public final class ContentLoader {
     private final Function<String,EntityType> entities; private final PersonaApi api; private final List<String> errors=new ArrayList<>();
     private final Map<Object,String> sources=new IdentityHashMap<>(); private String source; private Validation.Source document;
     private Map<String,String> behaviorSources=Map.of();
+    private Map<String,ScriptDefinition> reusableScripts=Map.of();
 
     public ContentLoader(File root,Duration defaultDelay){this(root,defaultDelay,ContentLoader::bukkitMaterial,ContentLoader::bukkitEntity,null);}
     public ContentLoader(File root,Duration defaultDelay,PersonaApi api){this(root,defaultDelay,ContentLoader::bukkitMaterial,ContentLoader::bukkitEntity,api);}
@@ -36,25 +39,83 @@ public final class ContentLoader {
     public Content.Registry load() throws ContentException {
         errors.clear();sources.clear();
         if(new File(root,"effects.yml").isFile())errors.add("effects.yml:1:1: obsolete effects.yml"+MIGRATION);
-        Map<String,ScriptDefinition> scripts=loadScripts();
+        Map<String,ScriptDefinition> scripts=loadScripts();reusableScripts=scripts;
         BehaviorLoader.Candidate behaviorCandidate=new BehaviorLoader(root,api).loadCandidate();errors.addAll(behaviorCandidate.errors());behaviorSources=behaviorCandidate.sources();Map<String,BehaviorDefinition> behaviors=behaviorCandidate.definitions();
         Map<String,Npc> npcs=loadDirectory("npcs",this::npc);Map<String,Dialogue> dialogues=loadDirectory("dialogues",this::dialogue);Map<String,Quest> quests=loadDirectory("quests",this::quest);
         validate(npcs,dialogues,quests,scripts,behaviors);if(!errors.isEmpty())throw new ContentException(errors);
         return new Content.Registry(Map.copyOf(npcs),Map.copyOf(dialogues),Map.copyOf(quests),Map.copyOf(scripts),behaviors);
     }
 
-    private Map<String,ScriptDefinition> loadScripts(){File file=new File(root,"scripts.yml");if(!file.isFile())return Map.of();source="scripts.yml";document=Validation.Source.read(root,file);try{YamlConfiguration y=yaml(file);Validation.keys(y,Set.of("content-version","scripts"));Object version=y.get("content-version");if(!(version instanceof Number n)||n.intValue()!=2||n.doubleValue()!=2)throw new IllegalArgumentException("scripts.yml requires content-version: 2; list-form/format-1 reusable scripts require manual migration (see SCRIPT_FORMAT_2_MIGRATION.md)");ConfigurationSection s=y.getConfigurationSection("scripts");if(s==null){error("missing scripts section");return Map.of();}return new ScriptDefinitionLoader(api).parse(s);}catch(Exception e){error(e);return Map.of();}}
-    private <T> Map<String,T> loadDirectory(String dir,Function<ConfigurationSection,T> parser){File folder=new File(root,dir);if(!folder.exists()&&!folder.mkdirs())errors.add(dir+":1:1: cannot create directory");Map<String,T> out=new LinkedHashMap<>();Map<String,String> declarations=new HashMap<>();File[] files=folder.listFiles(f->f.isFile()&&(f.getName().endsWith(".yml")||f.getName().endsWith(".yaml")));if(files==null)return out;Arrays.sort(files,Comparator.comparing(File::getName));for(File f:files){source=dir+"/"+f.getName();document=Validation.Source.read(root,f);try{YamlConfiguration yaml=yaml(f);ContentFormat.validate(yaml,document);T value=parser.apply(yaml);sources.put(value,source);String id=value instanceof Npc n?n.id():value instanceof Dialogue d?d.id():((Quest)value).id();if(out.putIfAbsent(id,value)!=null)throw new IllegalArgumentException("conflicting "+dir.substring(0,dir.length()-1)+" ID "+id+"; first declared at "+declarations.get(id));declarations.put(id,document.at("id","declaration").replace(": declaration",""));}catch(Exception e){error(e);}}return out;}
+    private Map<String,ScriptDefinition> loadScripts(){
+        File legacy=new File(root,"scripts.yml");
+        if(legacy.isFile()){source="scripts.yml";document=Validation.Source.read(root,legacy);error("monolithic scripts.yml is obsolete; create one content-version: 2 file per reusable script under scripts/");}
+        File folder=new File(root,"scripts");if(!folder.exists()&&!folder.mkdirs())errors.add("scripts:1:1: cannot create directory");
+        Map<String,ScriptDefinition> out=new LinkedHashMap<>();Map<String,String> declarations=new HashMap<>();ScriptDefinitionLoader loader=new ScriptDefinitionLoader(api);
+        for(File file:yamlFiles(folder)){
+            source=relative(file);document=Validation.Source.read(root,file);
+            try{YamlConfiguration yaml=yaml(file);ScriptDefinition value=loader.parseReusable(yaml);sources.put(value,source);String previous=declarations.putIfAbsent(value.id(),source);if(previous!=null)throw new IllegalArgumentException("conflicting script ID "+value.id()+"; first declared at "+previous);out.put(value.id(),value);}catch(Exception e){error(e);}
+        }
+        try{loader.validateAll(out.values(),out);}catch(Exception e){source="scripts";document=null;error(e);}
+        return Collections.unmodifiableMap(out);
+    }
+    private <T> Map<String,T> loadDirectory(String dir,Function<ConfigurationSection,T> parser){File folder=new File(root,dir);if(!folder.exists()&&!folder.mkdirs())errors.add(dir+":1:1: cannot create directory");Map<String,T> out=new LinkedHashMap<>();Map<String,String> declarations=new HashMap<>();for(File f:yamlFiles(folder)){source=relative(f);document=Validation.Source.read(root,f);try{YamlConfiguration yaml=yaml(f);ContentFormat.validate(yaml,document);T value=parser.apply(yaml);sources.put(value,source);String id=value instanceof Npc n?n.id():value instanceof Dialogue d?d.id():((Quest)value).id();if(out.putIfAbsent(id,value)!=null)throw new IllegalArgumentException("conflicting "+dir.substring(0,dir.length()-1)+" ID "+id+"; first declared at "+declarations.get(id));declarations.put(id,document.at("id","declaration").replace(": declaration",""));}catch(Exception e){error(e);}}return out;}
+    private List<File> yamlFiles(File folder){if(!folder.isDirectory())return List.of();try(var stream=Files.walk(folder.toPath(),9)){return stream.filter(Files::isRegularFile).filter(path->{String name=path.getFileName().toString();return name.endsWith(".yml")||name.endsWith(".yaml");}).sorted().map(Path::toFile).toList();}catch(Exception e){source=relative(folder);document=null;error(e);return List.of();}}
+    private String relative(File file){return root.toPath().toAbsolutePath().normalize().relativize(file.toPath().toAbsolutePath().normalize()).toString().replace(File.separatorChar,'/');}
 
     private static YamlConfiguration yaml(File file)throws Exception{YamlConfiguration yaml=new YamlConfiguration();yaml.load(file);return yaml;}
 
-    private Npc npc(ConfigurationSection s){reject(s,"actions","effects","on-interact-effects");Validation.keys(s,Set.of("content-version","id","display-name","dialogues","on-interact","on-no-dialogue","anchors","shared-behavior","player-behavior"));String id=id(s.getString("id"),"id");List<DialogueRegistration> ds=new ArrayList<>();for(Map<?,?> m:maps(s,"dialogues")){reject(m,"conditions");Validation.keys(m,Set.of("id","priority","when"));ds.add(new DialogueRegistration(id(str(m,"id"),"dialogue id"),integer(m,"priority",0),m.containsKey("when")?condition(m.get("when")):new All(List.of())));}ds.sort(Comparator.comparingInt(DialogueRegistration::priority).reversed());Map<String,Anchor> anchors=new LinkedHashMap<>();ConfigurationSection as=s.getConfigurationSection("anchors");if(as!=null)for(String name:as.getKeys(false)){ConfigurationSection a=required(as.getConfigurationSection(name),"anchor "+name);Validation.keys(a,Set.of("world","x","y","z","yaw","pitch"));for(String coordinate:Set.of("x","y","z"))if(!a.contains(coordinate)||!(a.get(coordinate) instanceof Number))throw new IllegalArgumentException("anchor "+name+" "+coordinate+" must be a number");String aid=anchorId(name);anchors.put(aid,new Anchor(required(a.getString("world"),"anchor world"),a.getDouble("x"),a.getDouble("y"),a.getDouble("z"),(float)a.getDouble("yaw",0),(float)a.getDouble("pitch",0)));}return new Npc(id,s.getString("display-name",id),List.copyOf(ds),steps(s.get("on-interact"),"on-interact"),steps(s.get("on-no-dialogue"),"on-no-dialogue"),Map.copyOf(anchors),s.getString("shared-behavior"),s.getString("player-behavior"));}
-    private Dialogue dialogue(ConfigurationSection s){Validation.keys(s,Set.of("content-version","id","start","nodes"));String id=id(s.getString("id"),"id"),start=required(s.getString("start"),"start");ConfigurationSection ns=required(s.getConfigurationSection("nodes"),"nodes");Map<String,Node> nodes=new LinkedHashMap<>();for(String nodeId:ns.getKeys(false)){ConfigurationSection n=required(ns.getConfigurationSection(nodeId),"node "+nodeId);reject(n,"lines","choices","on-enter","on-exit");Validation.keys(n,Set.of("script"));nodes.put(nodeId,new Node(nodeId,steps(n.get("script"),"node script")));}return new Dialogue(id,start,Map.copyOf(nodes));}
-    private Quest quest(ConfigurationSection s){reject(s,"rewards");Validation.keys(s,Set.of("content-version","id","title","description","phases","when","requirements","repeatable","cooldown","maximum-completions","time-limit","on-start","on-complete","on-fail","on-reset"));String id=id(s.getString("id"),"id");List<Phase> phases=new ArrayList<>();for(Map<?,?> p:maps(s,"phases")){reject(p,"rewards");Validation.keys(p,Set.of("id","title","description","objectives","branches","on-start","on-complete"));List<Objective> objectives=new ArrayList<>();if(p.get("objectives") instanceof List<?> list)for(Object raw:list)objectives.add(objective(asMap(raw)));List<PhaseBranch> branches=new ArrayList<>();if(p.get("branches") instanceof List<?> list)for(Object raw:list){Map<?,?> b=asMap(raw);reject(b,"conditions");Validation.keys(b,Set.of("when","next-phase"));branches.add(new PhaseBranch(condition(required(b.get("when"),"branch when")),required(str(b,"next-phase"),"next-phase").toLowerCase(Locale.ROOT)));}String pid=required(str(p,"id"),"phase id").toLowerCase(Locale.ROOT);phases.add(new Phase(pid,optional(str(p,"title"),pid),optional(str(p,"description"),""),List.copyOf(objectives),steps(p.get("on-start"),"phase on-start"),steps(p.get("on-complete"),"phase on-complete"),List.copyOf(branches)));}if(phases.isEmpty())throw new IllegalArgumentException("quest needs at least one phase");boolean repeat=typedBoolean(s,"repeatable",false);int maximum=typedInt(s,"maximum-completions",repeat?0:1);if(maximum<0)throw new IllegalArgumentException("maximum-completions cannot be negative");return new Quest(id,s.getString("title",id),s.getString("description",""),List.copyOf(phases),s.contains("requirements")?legacyCondition():s.contains("when")?condition(s.get("when")):new All(List.of()),repeat,s.contains("cooldown")?Durations.parse(s.get("cooldown")):Duration.ZERO,maximum,s.contains("time-limit")?Durations.parse(s.get("time-limit")):null,steps(s.get("on-start"),"quest on-start"),steps(s.get("on-complete"),"quest on-complete"),steps(s.get("on-fail"),"quest on-fail"),steps(s.get("on-reset"),"quest on-reset"));}
+    private Npc npc(ConfigurationSection s){
+        reject(s,"actions","effects","on-interact-effects","on-interact");
+        Validation.keys(s,Set.of("content-version","id","display-name","dialogues","on-click","on-damage","on-spawn","on-despawn","on-no-dialogue","signals","anchors","shared-behavior","player-behavior","tags"));
+        String id=id(s.getString("id"),"id");List<DialogueRegistration> ds=new ArrayList<>();
+        for(Map<?,?> m:maps(s,"dialogues")){reject(m,"conditions");Validation.keys(m,Set.of("id","priority","when"));ds.add(new DialogueRegistration(id(str(m,"id"),"dialogue id"),integer(m,"priority",0),m.containsKey("when")?condition(m.get("when")):new All(List.of())));}ds.sort(Comparator.comparingInt(DialogueRegistration::priority).reversed());
+        Map<String,Anchor> anchors=new LinkedHashMap<>();ConfigurationSection as=s.getConfigurationSection("anchors");if(as!=null)for(String name:as.getKeys(false)){ConfigurationSection a=required(as.getConfigurationSection(name),"anchor "+name);Validation.keys(a,Set.of("world","x","y","z","yaw","pitch"));for(String coordinate:Set.of("x","y","z"))if(!a.contains(coordinate)||!(a.get(coordinate) instanceof Number))throw new IllegalArgumentException("anchor "+name+" "+coordinate+" must be a number");String aid=anchorId(name);anchors.put(aid,new Anchor(required(a.getString("world"),"anchor world"),a.getDouble("x"),a.getDouble("y"),a.getDouble("z"),(float)a.getDouble("yaw",0),(float)a.getDouble("pitch",0)));}
+        Map<String,NpcSignal> signals=signals(s.getConfigurationSection("signals"),id);
+        return new Npc(id,s.getString("display-name",id),ds,
+                graph(s.get("on-click"),id+"#on-click",npcPlayerPins(Map.of("left-button",ScriptDefinition.ValueType.BOOLEAN,"right-button",ScriptDefinition.ValueType.BOOLEAN))),
+                graph(s.get("on-damage"),id+"#on-damage",npcPlayerPins(Map.of("damage",ScriptDefinition.ValueType.NUMBER))),
+                graph(s.get("on-spawn"),id+"#on-spawn",npcPins(Map.of())),
+                graph(s.get("on-despawn"),id+"#on-despawn",npcPins(Map.of("reason",ScriptDefinition.ValueType.STRING))),
+                graph(s.get("on-no-dialogue"),id+"#on-no-dialogue",npcPlayerPins(Map.of())),signals,anchors,
+                s.getString("shared-behavior"),s.getString("player-behavior"));
+    }
+    private Dialogue dialogue(ConfigurationSection s){
+        Validation.keys(s,Set.of("content-version","id","start","nodes","tags"));String id=id(s.getString("id"),"id"),start=required(s.getString("start"),"start");ConfigurationSection ns=required(s.getConfigurationSection("nodes"),"nodes");Map<String,Node> nodes=new LinkedHashMap<>();
+        for(String nodeId:ns.getKeys(false)){ConfigurationSection n=required(ns.getConfigurationSection(nodeId),"node "+nodeId);reject(n,"lines","choices","on-enter","on-exit");Validation.keys(n,Set.of("graph"));nodes.put(nodeId,new Node(nodeId,graph(required(n.get("graph"),"node graph"),id+"#node:"+nodeId,npcPlayerPins(Map.of("dialogue",ScriptDefinition.ValueType.DIALOGUE,"dialogue-node",ScriptDefinition.ValueType.STRING)))));}
+        return new Dialogue(id,start,Map.copyOf(nodes));
+    }
+    private Quest quest(ConfigurationSection s){
+        reject(s,"rewards");Validation.keys(s,Set.of("content-version","id","title","description","phases","when","requirements","repeatable","cooldown","maximum-completions","time-limit","on-start","on-complete","on-fail","on-reset","tags"));String id=id(s.getString("id"),"id");List<Phase> phases=new ArrayList<>();
+        for(Map<?,?> p:maps(s,"phases")){reject(p,"rewards");Validation.keys(p,Set.of("id","title","description","objectives","branches","on-start","on-complete"));List<Objective> objectives=new ArrayList<>();if(p.get("objectives") instanceof List<?> list)for(Object raw:list)objectives.add(objective(asMap(raw),id));List<PhaseBranch> branches=new ArrayList<>();if(p.get("branches") instanceof List<?> list)for(Object raw:list){Map<?,?> b=asMap(raw);reject(b,"conditions");Validation.keys(b,Set.of("when","next-phase"));branches.add(new PhaseBranch(condition(required(b.get("when"),"branch when")),required(str(b,"next-phase"),"next-phase").toLowerCase(Locale.ROOT)));}String pid=required(str(p,"id"),"phase id").toLowerCase(Locale.ROOT);Map<String,ScriptDefinition.Parameter> pins=questPins(id,pid,null);phases.add(new Phase(pid,optional(str(p,"title"),pid),optional(str(p,"description"),""),List.copyOf(objectives),graph(p.get("on-start"),id+"#phase:"+pid+":on-start",pins),graph(p.get("on-complete"),id+"#phase:"+pid+":on-complete",pins),List.copyOf(branches)));}
+        if(phases.isEmpty())throw new IllegalArgumentException("quest needs at least one phase");boolean repeat=typedBoolean(s,"repeatable",false);int maximum=typedInt(s,"maximum-completions",repeat?0:1);if(maximum<0)throw new IllegalArgumentException("maximum-completions cannot be negative");Map<String,ScriptDefinition.Parameter> pins=questPins(id,null,null);
+        return new Quest(id,s.getString("title",id),s.getString("description",""),List.copyOf(phases),s.contains("requirements")?legacyCondition():s.contains("when")?condition(s.get("when")):new All(List.of()),repeat,s.contains("cooldown")?Durations.parse(s.get("cooldown")):Duration.ZERO,maximum,s.contains("time-limit")?Durations.parse(s.get("time-limit")):null,graph(s.get("on-start"),id+"#on-start",pins),graph(s.get("on-complete"),id+"#on-complete",pins),graph(s.get("on-fail"),id+"#on-fail",pins),graph(s.get("on-reset"),id+"#on-reset",pins));
+    }
     private Condition legacyCondition(){throw new IllegalArgumentException("obsolete requirements condition map"+MIGRATION);}
 
-    private Objective objective(Map<?,?> m){reject(m,"effects");String oid=required(str(m,"id"),"objective id"),rawType=required(str(m,"type"),"objective type");ObjectiveType type=enumOrNull(ObjectiveType.class,rawType);String extension=null;Map<String,Object> options=Map.of();long requiredProgress=integer(m,"amount",1);if(type==null){extension=custom(rawType,ExpansionTypes.Objective.class);ExpansionTypes.Objective handler=api.handler(ExpansionTypes.Objective.class,extension).orElseThrow();ExpansionTypes.ObjectiveDefinition d=handler.parse(stringMap(m));options=d.data();api.validateEditorData(handler,options,"objective "+oid);requiredProgress=d.required();type=ObjectiveType.CUSTOM;}else Validation.keys(m,Set.of("id","title","description","type","material","entity","amount","npc","instance","location","radius","duration","optional","hidden","on-start","on-progress","on-complete"));Material material=m.containsKey("material")?material(str(m,"material")):null;EntityType entity=m.containsKey("entity")?entity(str(m,"entity")):null;int amount=integer(m,"amount",1);String npc=m.containsKey("npc")?id(str(m,"npc"),"npc"):null;Position position=null;if(m.get("location")!=null){Map<?,?> l=asMap(m.get("location"));Validation.keys(l,Set.of("world","x","y","z"));position=new Position(required(str(l,"world"),"world"),number(l,"x"),number(l,"y"),number(l,"z"));}Duration duration=m.containsKey("duration")?Durations.parse(m.get("duration")):null;if(amount<1)throw new IllegalArgumentException("objective amount must be positive");if(m.containsKey("radius")&&number(m,"radius")<=0)throw new IllegalArgumentException("objective radius must be positive");switch(type){case COLLECT_ITEM,DELIVER_ITEM->required(material,type+" material");case KILL_ENTITY->required(entity,"kill-entity entity");case TALK_TO_NPC->required(npc,"talk-to-npc npc");case GO_TO_LOCATION,INTERACT_BLOCK->required(position,type+" location");case WAIT,SURVIVE->required(duration,type+" duration");default->{}}ProgressHook progress=progressHook(m,type==ObjectiveType.WAIT||type==ObjectiveType.SURVIVE);return new Objective(oid,optional(str(m,"title"),oid),optional(str(m,"description"),""),type,material,entity,amount,npc,str(m,"instance"),position,m.containsKey("radius")?number(m,"radius"):1.5,duration,strictBool(m,"optional",false),strictBool(m,"hidden",false),steps(m.get("on-start"),"objective on-start"),progress,steps(m.get("on-complete"),"objective on-complete"),extension,options,requiredProgress);}
-    private ProgressHook progressHook(Map<?,?> m,boolean duration){Object raw=m.get("on-progress");if(raw==null)return new ProgressHook(0,List.of());if(!(raw instanceof Map<?,?> p))throw new IllegalArgumentException("on-progress must contain every and script");reject(p,"effects");Validation.keys(p,Set.of("every","script"));Object every=p.get("every");long interval=every==null?1:every instanceof Number n?n.longValue():duration?Durations.parse(every).toMillis():Long.parseLong(String.valueOf(every));if(interval<1)throw new IllegalArgumentException("on-progress every must be positive");return new ProgressHook(interval,steps(p.get("script"),"on-progress script"));}
+    private Objective objective(Map<?,?> m,String questId){reject(m,"effects");String oid=required(str(m,"id"),"objective id"),rawType=required(str(m,"type"),"objective type");ObjectiveType type=enumOrNull(ObjectiveType.class,rawType);String extension=null;Map<String,Object> options=Map.of();long requiredProgress=integer(m,"amount",1);if(type==null){extension=custom(rawType,ExpansionTypes.Objective.class);ExpansionTypes.Objective handler=api.handler(ExpansionTypes.Objective.class,extension).orElseThrow();ExpansionTypes.ObjectiveDefinition d=handler.parse(stringMap(m));options=d.data();api.validateEditorData(handler,options,"objective "+oid);requiredProgress=d.required();type=ObjectiveType.CUSTOM;}else Validation.keys(m,Set.of("id","title","description","type","material","entity","amount","npc","instance","location","radius","duration","optional","hidden","on-start","on-progress","on-complete"));Material material=m.containsKey("material")?material(str(m,"material")):null;EntityType entity=m.containsKey("entity")?entity(str(m,"entity")):null;int amount=integer(m,"amount",1);String npc=m.containsKey("npc")?id(str(m,"npc"),"npc"):null;Position position=null;if(m.get("location")!=null){Map<?,?> l=asMap(m.get("location"));Validation.keys(l,Set.of("world","x","y","z"));position=new Position(required(str(l,"world"),"world"),number(l,"x"),number(l,"y"),number(l,"z"));}Duration duration=m.containsKey("duration")?Durations.parse(m.get("duration")):null;if(amount<1)throw new IllegalArgumentException("objective amount must be positive");if(m.containsKey("radius")&&number(m,"radius")<=0)throw new IllegalArgumentException("objective radius must be positive");switch(type){case COLLECT_ITEM,DELIVER_ITEM->required(material,type+" material");case KILL_ENTITY->required(entity,"kill-entity entity");case TALK_TO_NPC->required(npc,"talk-to-npc npc");case GO_TO_LOCATION,INTERACT_BLOCK->required(position,type+" location");case WAIT,SURVIVE->required(duration,type+" duration");default->{}}Map<String,ScriptDefinition.Parameter> pins=questPins(questId,null,oid);ProgressHook progress=progressHook(m,type==ObjectiveType.WAIT||type==ObjectiveType.SURVIVE,questId,oid,pins);return new Objective(oid,optional(str(m,"title"),oid),optional(str(m,"description"),""),type,material,entity,amount,npc,str(m,"instance"),position,m.containsKey("radius")?number(m,"radius"):1.5,duration,strictBool(m,"optional",false),strictBool(m,"hidden",false),graph(m.get("on-start"),questId+"#objective:"+oid+":on-start",pins),progress,graph(m.get("on-complete"),questId+"#objective:"+oid+":on-complete",pins),extension,options,requiredProgress);}
+    private ProgressHook progressHook(Map<?,?> m,boolean duration,String questId,String objectiveId,Map<String,ScriptDefinition.Parameter> pins){Object raw=m.get("on-progress");if(raw==null)return new ProgressHook(0,null);if(!(raw instanceof Map<?,?> p))throw new IllegalArgumentException("on-progress must contain every and graph");reject(p,"effects","script");Validation.keys(p,Set.of("every","graph"));Object every=p.get("every");long interval=every==null?1:every instanceof Number n?n.longValue():duration?Durations.parse(every).toMillis():Long.parseLong(String.valueOf(every));if(interval<1)throw new IllegalArgumentException("on-progress every must be positive");return new ProgressHook(interval,graph(required(p.get("graph"),"on-progress graph"),questId+"#objective:"+objectiveId+":on-progress",pins));}
+
+    private ScriptDefinition graph(Object raw,String graphId,Map<String,ScriptDefinition.Parameter> eventPins){
+        if(raw==null)return null;
+        if(raw instanceof List<?>)throw new IllegalArgumentException(graphId+" uses an obsolete list hook; content-version 2 requires variables, keyed nodes, and keyed connections");
+        ConfigurationSection section=asSection(raw,"graph");ScriptDefinitionLoader loader=new ScriptDefinitionLoader(api);ScriptDefinition graph=loader.parseEvent(section,graphId,eventPins);loader.validateAll(List.of(graph),reusableScripts);return graph;
+    }
+    private Map<String,NpcSignal> signals(ConfigurationSection section,String npcId){
+        if(section==null)return Map.of();Map<String,NpcSignal> out=new LinkedHashMap<>();ScriptDefinitionLoader loader=new ScriptDefinitionLoader(api);
+        for(String signalId:section.getKeys(false)){
+            if(!signalId.matches("[a-z][a-z0-9_.-]{0,63}"))throw new IllegalArgumentException("invalid NPC signal ID "+signalId);
+            ConfigurationSection signal=required(section.getConfigurationSection(signalId),"signal "+signalId);Validation.keys(signal,Set.of("parameters","graph"));
+            ConfigurationSection declared=required(signal.getConfigurationSection("parameters"),"signal "+signalId+" parameters");Map<String,ScriptDefinition.Parameter> parameters=loader.parameters(declared,"signal");
+            Map<String,ScriptDefinition.Parameter> pins=new LinkedHashMap<>(npcPins(Map.of()));for(var entry:parameters.entrySet()){if(pins.putIfAbsent(entry.getKey(),entry.getValue())!=null)throw new IllegalArgumentException("signal "+signalId+" parameter shadows built-in event pin "+entry.getKey());}
+            ScriptDefinition graph=graph(signal.get("graph"),npcId+"#signal:"+signalId,pins);out.put(signalId,new NpcSignal(signalId,parameters,graph));
+        }
+        return Map.copyOf(out);
+    }
+    private static ConfigurationSection asSection(Object raw,String name){if(raw instanceof ConfigurationSection section)return section;if(raw instanceof Map<?,?> map){YamlConfiguration yaml=new YamlConfiguration();Map<String,Object> values=stringMap(map);return yaml.createSection(name,values);}throw new IllegalArgumentException(name+" must be a mapping");}
+    private static ScriptDefinition.Parameter eventPin(ScriptDefinition.ValueType type){return new ScriptDefinition.Parameter(type,false,null);}
+    private static Map<String,ScriptDefinition.Parameter> npcPins(Map<String,ScriptDefinition.ValueType> extra){Map<String,ScriptDefinition.Parameter> pins=new LinkedHashMap<>();pins.put("npc",eventPin(ScriptDefinition.ValueType.NPC));pins.put("npc-instance",eventPin(ScriptDefinition.ValueType.NPC_INSTANCE));extra.forEach((key,type)->pins.put(key,eventPin(type)));return Map.copyOf(pins);}
+    private static Map<String,ScriptDefinition.Parameter> npcPlayerPins(Map<String,ScriptDefinition.ValueType> extra){Map<String,ScriptDefinition.Parameter> pins=new LinkedHashMap<>(npcPins(extra));pins.put("player",eventPin(ScriptDefinition.ValueType.PLAYER));return Map.copyOf(pins);}
+    private static Map<String,ScriptDefinition.Parameter> questPins(String quest,String phase,String objective){Map<String,ScriptDefinition.Parameter> pins=new LinkedHashMap<>();pins.put("player",eventPin(ScriptDefinition.ValueType.PLAYER));pins.put("quest",eventPin(ScriptDefinition.ValueType.QUEST));if(phase!=null)pins.put("phase",eventPin(ScriptDefinition.ValueType.STRING));if(objective!=null){pins.put("objective",eventPin(ScriptDefinition.ValueType.QUEST_OBJECTIVE));pins.put("progress",eventPin(ScriptDefinition.ValueType.INTEGER));pins.put("required",eventPin(ScriptDefinition.ValueType.INTEGER));}return Map.copyOf(pins);}
 
     private List<Step> steps(Object raw,String what){if(raw==null)return List.of();if(!(raw instanceof List<?> list))throw new IllegalArgumentException(what+" must be a list");List<Step> out=new ArrayList<>();for(Object value:list)out.add(step(asMap(value)));return List.copyOf(out);}
     private Step step(Map<?,?> m){reject(m,"use","actions","effects");String type=required(str(m,"type"),"script step type");if(!type.equals(type.toLowerCase(Locale.ROOT))||type.contains("_"))throw new IllegalArgumentException("step type must be lowercase kebab-case: "+type);return switch(type){
@@ -127,16 +188,15 @@ public final class ContentLoader {
             error(n.id() + " references missing dialogue " + r.dialogueId());
           validateCondition(r.condition(), quests);
         }
-        validateSteps(n.onInteract(), null, dialogues, quests, scripts, false);
-        validateSteps(n.onNoDialogue(), null, dialogues, quests, scripts,
-                      false);
+        for(ScriptDefinition graph:Arrays.asList(n.onClick(),n.onDamage(),n.onSpawn(),n.onDespawn(),n.onNoDialogue()))if(graph!=null)validateGraph(graph,null,dialogues,quests,false);
+        for(NpcSignal signal:n.signals().values())if(signal.graph()!=null)validateGraph(signal.graph(),null,dialogues,quests,false);
       }
       for (Dialogue d : dialogues.values()) {
         select(d);
         if (!d.nodes().containsKey(d.start()))
           error(d.id() + " has missing start node " + d.start());
         for (Node n : d.nodes().values())
-          validateSteps(n.script(), d, dialogues, quests, scripts, true);
+          validateGraph(n.graph(), d, dialogues, quests, true);
       }
       for (Quest q : quests.values()) {
         select(q);
@@ -155,11 +215,9 @@ public final class ContentLoader {
                     o.id());
             if (o.npc() != null && !npcs.containsKey(o.npc()))
               error(q.id() + " references missing NPC " + o.npc());
-            validateSteps(o.onStart(), null, dialogues, quests, scripts, false);
-            validateSteps(o.onProgress().script(), null, dialogues, quests,
-                          scripts, false);
-            validateSteps(o.onComplete(), null, dialogues, quests, scripts,
-                          false);
+            validateGraph(o.onStart(), null, dialogues, quests, false);
+            validateGraph(o.onProgress().graph(), null, dialogues, quests, false);
+            validateGraph(o.onComplete(), null, dialogues, quests, false);
           }
           for (PhaseBranch b : p.branches()) {
             validateCondition(b.condition(), quests);
@@ -168,17 +226,29 @@ public final class ContentLoader {
               error(q.id() + " branch references missing phase " +
                     b.nextPhase());
           }
-          validateSteps(p.onStart(), null, dialogues, quests, scripts, false);
-          validateSteps(p.onComplete(), null, dialogues, quests, scripts,
-                        false);
+          validateGraph(p.onStart(), null, dialogues, quests, false);
+          validateGraph(p.onComplete(), null, dialogues, quests, false);
         }
-        validateSteps(q.onStart(), null, dialogues, quests, scripts, false);
-        validateSteps(q.onComplete(), null, dialogues, quests, scripts, false);
-        validateSteps(q.onFail(), null, dialogues, quests, scripts, false);
-        validateSteps(q.onReset(), null, dialogues, quests, scripts, false);
+        validateGraph(q.onStart(), null, dialogues, quests, false);
+        validateGraph(q.onComplete(), null, dialogues, quests, false);
+        validateGraph(q.onFail(), null, dialogues, quests, false);
+        validateGraph(q.onReset(), null, dialogues, quests, false);
       }
       validateBehaviorLeaves(behaviors, quests, scripts);
-      selectFile("scripts.yml");
+      selectFile("scripts");
+    }
+
+    private void validateGraph(ScriptDefinition graph,Dialogue owner,Map<String,Dialogue> dialogues,Map<String,Quest> quests,boolean dialogue){
+      if(graph==null)return;
+      for(var entry:graph.nodes().entrySet()){
+        ScriptDefinition.Node node=entry.getValue();String type=node.type();
+        if(type.equals("goto")){
+          if(!dialogue){error("goto is only valid in dialogue graphs");continue;}
+          String dialogueId=node.options().get("dialogue")==null?null:String.valueOf(node.options().get("dialogue"));String nodeId=node.options().get("node")==null?null:String.valueOf(node.options().get("node"));Dialogue target=dialogueId==null?owner:dialogues.get(dialogueId);
+          if(dialogueId!=null&&target==null)error("goto references missing dialogue "+dialogueId);else if(target!=null&&nodeId!=null&&!target.nodes().containsKey(nodeId))error("goto references missing node "+nodeId);
+        }else if(type.equals("end-dialogue")&&!dialogue)error("end-dialogue is only valid in dialogue graphs");
+        else if(type.startsWith("persona:")){Command command=new Command(type,node.options(),List.of(),List.of());validateCommand(command,quests);}
+      }
     }
 
     private Set<String> attachedBehaviors(Npc npc,

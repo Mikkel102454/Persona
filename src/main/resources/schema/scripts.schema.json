@@ -1,54 +1,65 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://persona.invalid/schema/scripts-v2.json",
-  "title": "Persona reusable script graphs",
+  "$id": "https://persona.invalid/schema/reusable-script-v2.json",
+  "title": "Persona reusable script graph",
   "type": "object",
   "additionalProperties": false,
-  "required": ["content-version", "scripts"],
+  "required": ["content-version", "id", "inputs", "outputs", "variables", "nodes", "connections"],
   "properties": {
     "content-version": { "const": 2 },
-    "scripts": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.:-]{0,127}$" },
+    "tags": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "inputs": { "type": "object", "propertyNames": { "$ref": "#/$defs/key" }, "additionalProperties": { "$ref": "#/$defs/parameter" } },
+    "outputs": { "type": "object", "propertyNames": { "$ref": "#/$defs/key" }, "additionalProperties": { "$ref": "#/$defs/parameter" } },
+    "variables": { "type": "object", "propertyNames": { "$ref": "#/$defs/key" }, "additionalProperties": { "$ref": "#/$defs/variable" } },
+    "nodes": {
       "type": "object",
-      "additionalProperties": { "$ref": "#/$defs/script" }
+      "propertyNames": { "$ref": "#/$defs/key" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["type"],
+        "properties": { "type": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.:-]*$" } }
+      }
+    },
+    "connections": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/key" },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from", "to"],
+        "properties": {
+          "from": { "$ref": "#/$defs/endpoint" },
+          "to": { "$ref": "#/$defs/endpoint" }
+        }
+      }
     }
   },
   "$defs": {
+    "key": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]{0,127}$" },
+    "valueType": { "type": "string", "pattern": "^(?:list:)*[a-z0-9][a-z0-9_.:-]*$" },
     "parameter": {
       "type": "object",
       "additionalProperties": false,
       "required": ["type"],
       "properties": {
-        "type": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.:-]*$" },
+        "type": { "$ref": "#/$defs/valueType" },
         "required": { "type": "boolean" },
         "default": {}
       }
     },
-    "endpoint": { "type": "string", "pattern": "^(?:\\$input|\\$output|[A-Za-z_][A-Za-z0-9_-]*)\\.[A-Za-z_][A-Za-z0-9_-]*$" },
-    "script": {
+    "variable": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["inputs", "outputs", "nodes", "connections"],
+      "required": ["type"],
       "properties": {
-        "inputs": { "type": "object", "additionalProperties": { "$ref": "#/$defs/parameter" } },
-        "outputs": { "type": "object", "additionalProperties": { "$ref": "#/$defs/parameter" } },
-        "nodes": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "object",
-            "required": ["type"],
-            "properties": { "type": { "type": "string" } }
-          }
-        },
-        "connections": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["from", "to"],
-            "properties": { "from": { "$ref": "#/$defs/endpoint" }, "to": { "$ref": "#/$defs/endpoint" } }
-          }
-        }
+        "type": { "$ref": "#/$defs/valueType" },
+        "default": {}
       }
+    },
+    "endpoint": {
+      "type": "string",
+      "pattern": "^(?:\\$input|\\$output|[a-z0-9][a-z0-9_.-]{0,127})\\.[a-z0-9][a-z0-9_.-]{0,127}$"
     }
   }
 }

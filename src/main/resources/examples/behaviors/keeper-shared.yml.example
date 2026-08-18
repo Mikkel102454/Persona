@@ -1,4 +1,5 @@
 # A global routine controlling the manually bound Citizens actor.
+content-version: 2
 id: harbor:keeper-shared
 scope: shared
 

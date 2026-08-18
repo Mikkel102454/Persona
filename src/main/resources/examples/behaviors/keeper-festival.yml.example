@@ -1,4 +1,5 @@
 # A non-recursive subtree reused by the player presentation tree.
+content-version: 2
 id: harbor:keeper-festival
 scope: player
 

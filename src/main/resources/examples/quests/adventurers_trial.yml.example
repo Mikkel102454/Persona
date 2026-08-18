@@ -1,18 +1,27 @@
+content-version: 2
 id: guild:adventurers_trial
 title: "The Adventurer's Trial"
 description: "Complete four trials to earn your place in the guild."
 on-start:
-  - type: play-sound
-    sound: minecraft:entity.experience_orb.pickup
-  - type: message
-    text: "<gold>The Adventurer's Trial has begun!"
+  variables: {}
+  nodes:
+    sound: { type: play-sound, sound: minecraft:entity.experience_orb.pickup }
+    message: { type: message, text: "<gold>The Adventurer's Trial has begun!" }
+  connections:
+    enter: { from: $event.exec, to: sound.exec }
+    sound-player: { from: $event.player, to: sound.player }
+    announce: { from: sound.success, to: message.exec }
+    message-player: { from: $event.player, to: message.player }
 phases:
   - id: preparation
     title: "Preparation"
     on-start:
-      - type: title
-        title: "<yellow>Phase I"
-        subtitle: "<white>Prepare yourself"
+      variables: {}
+      nodes:
+        title: { type: title, title: "<yellow>Phase I", subtitle: "<white>Prepare yourself" }
+      connections:
+        enter: { from: $event.exec, to: title.exec }
+        title-player: { from: $event.player, to: title.player }
     objectives:
       - id: collect_bread
         title: "Gather provisions"
@@ -20,15 +29,25 @@ phases:
         material: minecraft:bread
         amount: 3
         on-complete:
-          - type: play-sound
-            sound: minecraft:block.note_block.pling
-          - type: action-bar
-            text: "<green>Provisions secured!"
+          variables: {}
+          nodes:
+            sound: { type: play-sound, sound: minecraft:block.note_block.pling }
+            status: { type: action-bar, text: "<green>Provisions secured!" }
+          connections:
+            enter: { from: $event.exec, to: sound.exec }
+            sound-player: { from: $event.player, to: sound.player }
+            status: { from: sound.success, to: status.exec }
+            status-player: { from: $event.player, to: status.player }
     on-complete:
-      - type: message
-        text: "<green>Preparation complete. Combat comes next."
-      - type: give-experience
-        amount: 5
+      variables: {}
+      nodes:
+        message: { type: message, text: "<green>Preparation complete. Combat comes next." }
+        experience: { type: give-experience, amount: 5 }
+      connections:
+        enter: { from: $event.exec, to: message.exec }
+        message-player: { from: $event.player, to: message.player }
+        reward: { from: message.success, to: experience.exec }
+        experience-player: { from: $event.player, to: experience.player }
   - id: combat-and-report
     title: "Combat and Report"
     objectives:
@@ -38,16 +57,24 @@ phases:
         amount: 2
         on-progress:
           every: 1
-          script:
-            - type: action-bar
-              text: "<yellow><current>/<required> zombies defeated"
+          graph:
+            variables: {}
+            nodes:
+              status: { type: action-bar, text: "<yellow><current>/<required> zombies defeated" }
+            connections:
+              enter: { from: $event.exec, to: status.exec }
+              status-player: { from: $event.player, to: status.player }
       - id: report_to_aria
         type: talk-to-npc
         npc: guild:trial_master
         instance: trial-master
     on-complete:
-      - type: give-experience
-        amount: 10
+      variables: {}
+      nodes:
+        experience: { type: give-experience, amount: 10 }
+      connections:
+        enter: { from: $event.exec, to: experience.exec }
+        experience-player: { from: $event.player, to: experience.player }
   - id: exploration
     title: "Exploration"
     objectives:
@@ -60,37 +87,43 @@ phases:
         location: { world: world, x: 12, y: 99, z: 0 }
         material: minecraft:crafting_table
     on-complete:
-      - type: give-experience
-        amount: 10
+      variables: {}
+      nodes:
+        experience: { type: give-experience, amount: 10 }
+      connections:
+        enter: { from: $event.exec, to: experience.exec }
+        experience-player: { from: $event.player, to: experience.player }
   - id: endurance
     title: "Endurance"
     objectives:
-      - id: wait_patiently
-        type: wait
-        duration: 10s
-        hidden: true
-      - id: survive_trial
-        type: survive
-        duration: 30s
+      - { id: wait_patiently, type: wait, duration: 10s, hidden: true }
+      - { id: survive_trial, type: survive, duration: 30s }
     on-complete:
-      - type: set-flag
-        flag: endured_trial
-        value: true
+      variables: {}
+      nodes:
+        remember: { type: set-flag, flag: endured_trial, value: true }
+      connections:
+        enter: { from: $event.exec, to: remember.exec }
+        remember-player: { from: $event.player, to: remember.player }
 on-complete:
-  - type: give-item
-    material: minecraft:diamond
-    amount: 1
-  - type: give-experience
-    amount: 50
-  - type: set-flag
-    flag: adventurers_trial_complete
-    value: true
-  - type: title
-    title: "<gold>Trial Complete!"
-    subtitle: "<yellow>You are now an adventurer."
-  - type: run-script
-    script: quest-success
-    inputs: {}
-  - type: broadcast
-    text: "<aqua><player> completed <quest-title>!"
-# Objective IDs are stable persistence keys; phase branches choose the first eligible destination or fall through.
+  variables: {}
+  nodes:
+    diamond: { type: give-item, material: minecraft:diamond, amount: 1 }
+    experience: { type: give-experience, amount: 50 }
+    remember: { type: set-flag, flag: adventurers_trial_complete, value: true }
+    title: { type: title, title: "<gold>Trial Complete!", subtitle: "<yellow>You are now an adventurer." }
+    reusable: { type: run-script, script: quest-success, inputs: {} }
+    announce: { type: broadcast, text: "<aqua><player> completed <quest-title>!" }
+  connections:
+    enter: { from: $event.exec, to: diamond.exec }
+    diamond-player: { from: $event.player, to: diamond.player }
+    experience: { from: diamond.success, to: experience.exec }
+    experience-player: { from: $event.player, to: experience.player }
+    remember: { from: experience.success, to: remember.exec }
+    remember-player: { from: $event.player, to: remember.player }
+    title: { from: remember.success, to: title.exec }
+    title-player: { from: $event.player, to: title.player }
+    reusable: { from: title.success, to: reusable.exec }
+    reusable-player: { from: $event.player, to: reusable.player }
+    announce: { from: reusable.success, to: announce.exec }
+# Objective IDs remain stable persistence keys while lifecycle behavior is graph-native.
