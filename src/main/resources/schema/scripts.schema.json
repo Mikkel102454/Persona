@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://persona.invalid/schema/scripts-v2.json",
+  "title": "Persona reusable script graphs",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["content-version", "scripts"],
+  "properties": {
+    "content-version": { "const": 2 },
+    "scripts": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/script" }
+    }
+  },
+  "$defs": {
+    "parameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.:-]*$" },
+        "required": { "type": "boolean" },
+        "default": {}
+      }
+    },
+    "endpoint": { "type": "string", "pattern": "^(?:\\$input|\\$output|[A-Za-z_][A-Za-z0-9_-]*)\\.[A-Za-z_][A-Za-z0-9_-]*$" },
+    "script": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inputs", "outputs", "nodes", "connections"],
+      "properties": {
+        "inputs": { "type": "object", "additionalProperties": { "$ref": "#/$defs/parameter" } },
+        "outputs": { "type": "object", "additionalProperties": { "$ref": "#/$defs/parameter" } },
+        "nodes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["type"],
+            "properties": { "type": { "type": "string" } }
+          }
+        },
+        "connections": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["from", "to"],
+            "properties": { "from": { "$ref": "#/$defs/endpoint" }, "to": { "$ref": "#/$defs/endpoint" } }
+          }
+        }
+      }
+    }
+  }
+}
