@@ -90,6 +90,7 @@ on-complete:
     subtitle: "<yellow>You are now an adventurer."
   - type: run-script
     script: quest-success
+    inputs: {}
   - type: broadcast
     text: "<aqua><player> completed <quest-title>!"
 # Objective IDs are stable persistence keys; phase branches choose the first eligible destination or fall through.

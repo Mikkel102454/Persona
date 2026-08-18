@@ -16,9 +16,16 @@ class AdvancedContentLoaderTest {
     @TempDir Path temp;
     @Test void loadsOrderedScriptsTypedConditionsHooksAndReusableScripts() throws Exception {
         dirs();Files.writeString(temp.resolve("scripts.yml"),"""
+                content-version: 2
                 scripts:
                   success:
-                    - { type: play-sound, sound: minecraft:test }
+                    inputs: {}
+                    outputs: {}
+                    nodes:
+                      sound: { type: play-sound, sound: minecraft:test }
+                    connections:
+                      enter: { from: $input.exec, to: sound.exec }
+                      leave: { from: sound.success, to: $output.exec }
                 """);
         Files.writeString(temp.resolve("npcs/guide.yml"),"""
                 id: test:guide
@@ -39,7 +46,7 @@ class AdvancedContentLoaderTest {
                           - { text: Greetings, weight: 1 }
                       - type: if
                         when: { type: permission, permission: persona.player.quests }
-                        then: [ { type: run-script, script: success } ]
+                        then: [ { type: run-script, script: success, inputs: {} } ]
                       - { type: end-dialogue }
                 """);
         Files.writeString(temp.resolve("quests/trial.yml"),"""
@@ -64,7 +71,7 @@ class AdvancedContentLoaderTest {
                         next-phase: end
                 on-complete: [ { type: give-experience, amount: 5 } ]
                 """);
-        Registry registry=loader().load();assertEquals(1,registry.scripts().get("success").size());
+        Registry registry=loader().load();assertEquals(1,registry.scripts().get("success").nodes().size());
         Node node=registry.dialogues().get("test:intro").nodes().get("hello");assertInstanceOf(Command.class,node.script().getFirst());
         Say say=(Say)node.script().get(1);assertEquals(2,say.variants().size());
         Quest q=registry.quests().get("test:trial");assertTrue(q.repeatable());assertEquals(Duration.ofHours(1),q.cooldown());assertEquals(1000,q.phases().getFirst().objectives().getFirst().onProgress().every());

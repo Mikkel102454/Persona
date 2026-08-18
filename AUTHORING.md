@@ -140,14 +140,28 @@ Objective structural types are `collect-item`, `deliver-item`, `talk-to-npc`, `k
 ## Reusable scripts
 
 ```yaml
+content-version: 2
 scripts:
   celebration:
-    - { type: play-sound, sound: minecraft:ui.toast.challenge_complete }
-    - { type: wait, duration: 500ms }
-    - { type: particle, particle: minecraft:happy_villager, count: 20 }
+    inputs:
+      amount: { type: integer, default: 20 }
+    outputs:
+      shown: { type: boolean, default: false }
+    nodes:
+      sound: { type: play-sound, sound: minecraft:ui.toast.challenge_complete }
+      particles: { type: particle, particle: minecraft:happy_villager }
+      yes: { type: value, value-type: boolean, value: true }
+    connections:
+      enter: { from: $input.exec, to: sound.exec }
+      after-sound: { from: sound.success, to: particles.exec }
+      particle-count: { from: $input.amount, to: particles.amount }
+      leave: { from: particles.success, to: $output.exec }
+      result: { from: yes.value, to: $output.shown }
 ```
 
-Invoke it with `{ type: run-script, script: celebration }`.
+Invoke it with `{ type: run-script, script: celebration, inputs: { amount: 30 } }`. The `inputs` mapping is mandatory even when empty. Inputs use inline defaults while unwired; a wire overrides the default without deleting it. Data pins require the exact nominal type. The only implicit flow is execution; conversions require `integer-to-number`, `string-to-text`, or `to-string` nodes.
+
+See [SCRIPT_FORMAT_2_MIGRATION.md](SCRIPT_FORMAT_2_MIGRATION.md) for the intentionally manual migration from list-form reusable scripts.
 
 ## Extension API 2.2
 

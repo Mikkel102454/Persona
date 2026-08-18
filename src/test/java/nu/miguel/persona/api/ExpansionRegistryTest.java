@@ -68,6 +68,9 @@ class ExpansionRegistryTest {
         assertTrue(api.register(expansion("forms","2.2",r->{
             r.command("announce",new ExpansionTypes.Command(){
                 public java.util.concurrent.CompletionStage<ExpansionTypes.CommandResult> execute(PersonaContext c,Map<String,Object> d){return CompletableFuture.completedFuture(ExpansionTypes.CommandResult.success());}
+                public java.util.List<ExpansionTypes.ScriptPin> inputPins(){return java.util.List.of(new ExpansionTypes.ScriptPin("channel","string",true,null));}
+                public java.util.List<ExpansionTypes.ScriptPin> outputPins(){return java.util.List.of(new ExpansionTypes.ScriptPin("receipt","forms:receipt",true,null));}
+                public Map<String,Map<String,Object>> nominalValueTypes(){return Map.of("forms:receipt",Map.of("label","Receipt"));}
                 public Map<String,Object> editorSchema(){return Map.of("type","object","required",java.util.List.of("channel"),"properties",Map.of("channel",Map.of("type","string","enum",java.util.List.of("local","global"),EditorSchemaAnnotations.WIDGET,"radio-group")));}
             });
             r.editorSchema("future-widget","panel",()->Map.of("type","object",EditorSchemaAnnotations.ORDER,3));
@@ -75,6 +78,10 @@ class ExpansionRegistryTest {
         var schemas=api.editorSchemas();
         assertEquals(Set.of("command:forms:announce","future-widget:forms:panel"),schemas.stream().map(x->x.contentType()+":"+x.typeId()).collect(java.util.stream.Collectors.toSet()));
         assertEquals("1",schemas.getFirst().extensionVersion());
+        var commandSchema=schemas.stream().filter(x->x.contentType().equals("command")).findFirst().orElseThrow().schema();
+        assertEquals("channel",((java.util.List<Map<String,Object>>)commandSchema.get("x-persona-input-pins")).getFirst().get("name"));
+        assertEquals("forms:receipt",((java.util.List<Map<String,Object>>)commandSchema.get("x-persona-output-pins")).getFirst().get("valueType"));
+        assertTrue(((Map<?,?>)commandSchema.get("x-persona-value-types")).containsKey("forms:receipt"));
         assertThrows(UnsupportedOperationException.class,()->schemas.stream().filter(x->x.contentType().equals("command")).findFirst().orElseThrow().schema().put("bad",true));
     }
 

@@ -8,16 +8,17 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import nu.miguel.persona.behavior.BehaviorDefinition;
+import nu.miguel.persona.script.ScriptDefinition;
 
 /** Immutable, fully validated representation of Persona 2.0 YAML content. */
 public final class Content {
     private Content() {}
 
     public record Registry(Map<String,Npc> npcs, Map<String,Dialogue> dialogues,
-                           Map<String,Quest> quests, Map<String,List<Step>> scripts,
+                           Map<String,Quest> quests, Map<String,ScriptDefinition> scripts,
                            Map<String,BehaviorDefinition> behaviors) {
         public Registry(Map<String,Npc> npcs,Map<String,Dialogue> dialogues,Map<String,Quest> quests){this(npcs,dialogues,quests,Map.of(),Map.of());}
-        public Registry(Map<String,Npc> npcs,Map<String,Dialogue> dialogues,Map<String,Quest> quests,Map<String,List<Step>> scripts){this(npcs,dialogues,quests,scripts,Map.of());}
+        public Registry(Map<String,Npc> npcs,Map<String,Dialogue> dialogues,Map<String,Quest> quests,Map<String,ScriptDefinition> scripts){this(npcs,dialogues,quests,scripts,Map.of());}
         public static Registry empty(){return new Registry(Map.of(),Map.of(),Map.of(),Map.of(),Map.of());}
     }
 
@@ -47,7 +48,9 @@ public final class Content {
     public record Wait(Duration duration) implements Step {}
     public record RandomStep(List<WeightedScript> options) implements Step {}
     public record WeightedScript(int weight,List<Step> script) {}
-    public record RunScript(String script) implements Step {}
+    public record RunScript(String script,Map<String,Object> inputs) implements Step {
+        public RunScript { inputs=Map.copyOf(inputs); }
+    }
     public record Command(String type,Map<String,Object> options,List<Step> onSuccess,List<Step> onFailure) implements Step {
         public Command { options=Map.copyOf(options);onSuccess=List.copyOf(onSuccess);onFailure=List.copyOf(onFailure); }
     }

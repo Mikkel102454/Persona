@@ -81,6 +81,8 @@ public final class PersonaApi {
     public record ActiveObjective(String questId,String phaseId,String objectiveId,String type,long current,long required,Map<String,Object> options){}
     public <T> Optional<T> handler(Class<T> category,String raw){Entry<?> e=types.getOrDefault(category,Map.of()).get(canonical(raw));return e==null?Optional.empty():Optional.of(category.cast(e.handler));}
     public Set<String> registeredTypes(Class<?> category){return Set.copyOf(types.getOrDefault(category,Map.of()).keySet());}
+    /** Namespaced script value types declared by registered command extensions. */
+    public synchronized Set<String> scriptValueTypes(){Set<String> result=new LinkedHashSet<>();types.getOrDefault(ExpansionTypes.Command.class,Map.of()).values().forEach(entry->result.addAll(((ExpansionTypes.Command)entry.handler).nominalValueTypes().keySet()));return Set.copyOf(result);}
     /** JSON Schema fragments keyed by canonical extension behavior node type. */
     public synchronized Map<String,Map<String,Object>> behaviorSchemas(){
         Map<String,Map<String,Object>> result=new LinkedHashMap<>();
@@ -92,13 +94,14 @@ public final class PersonaApi {
     public synchronized List<EditorSchemaDescriptor> editorSchemas(){
         Map<String,EditorSchemaDescriptor> result=new TreeMap<>();
         types.forEach((category,entries)->entries.forEach((id,entry)->{
-            if(entry.handler instanceof EditorSchemaProvider provider){String contentType=contentType(category);PersonaExpansion owner=entry.owner;
-                result.put(contentType+":"+id,new EditorSchemaDescriptor(contentType,id,owner.identifier(),owner.version(),provider.editorSchema()));}
+            if(entry.handler instanceof EditorSchemaProvider provider){String contentType=contentType(category);PersonaExpansion owner=entry.owner;Map<String,Object> schema=new LinkedHashMap<>(provider.editorSchema());if(entry.handler instanceof ExpansionTypes.Command command){Map<String,Map<String,Object>> nominal=command.nominalValueTypes();for(String valueType:nominal.keySet())if(!valueType.contains(":"))throw new IllegalArgumentException("extension nominal value type must be namespaced: "+valueType);for(ExpansionTypes.ScriptPin pin:java.util.stream.Stream.concat(command.inputPins().stream(),command.outputPins().stream()).toList())if(pin.valueType().contains(":")&&!nominal.containsKey(pin.valueType()))throw new IllegalArgumentException("extension pin "+pin.name()+" uses undeclared nominal value type "+pin.valueType());schema.put("x-persona-input-pins",pinMetadata(command.inputPins()));schema.put("x-persona-output-pins",pinMetadata(command.outputPins()));schema.put("x-persona-value-types",nominal);}
+                result.put(contentType+":"+id,new EditorSchemaDescriptor(contentType,id,owner.identifier(),owner.version(),schema));}
         }));
         editorSchemas.forEach((key,entry)->result.put(key,new EditorSchemaDescriptor(entry.contentType,entry.typeId,
                 entry.owner.identifier(),entry.owner.version(),entry.provider.editorSchema())));
         return List.copyOf(result.values());
     }
+    private static List<Map<String,Object>> pinMetadata(List<ExpansionTypes.ScriptPin> pins){return pins.stream().map(pin->{Map<String,Object> value=new LinkedHashMap<>();value.put("name",pin.name());value.put("valueType",pin.valueType());value.put("required",pin.required());if(pin.defaultValue()!=null)value.put("default",pin.defaultValue());return Map.copyOf(value);}).toList();}
     public synchronized List<EditorCatalogDescriptor> editorCatalogs(){
         return editorCatalogs.entrySet().stream().sorted(Map.Entry.comparingByKey()).map(entry->{CatalogEntry value=entry.getValue();
             return new EditorCatalogDescriptor(entry.getKey(),value.owner.identifier(),value.owner.version(),value.provider.metadata());}).toList();

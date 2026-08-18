@@ -1,17 +1,38 @@
 # Copy to plugins/Persona/scripts.yml to enable reusable scripts.
+content-version: 2
 scripts:
   quest-success:
-    - type: play-sound
-      sound: minecraft:ui.toast.challenge_complete
-    - type: particle
-      particle: minecraft:happy_villager
-      count: 20
+    inputs: {}
+    outputs: {}
+    nodes:
+      sound:
+        type: play-sound
+        sound: minecraft:ui.toast.challenge_complete
+      particles:
+        type: particle
+        particle: minecraft:happy_villager
+        count: 20
+    connections:
+      enter: { from: $input.exec, to: sound.exec }
+      after-sound: { from: sound.success, to: particles.exec }
+      leave: { from: particles.success, to: $output.exec }
   dramatic-warning:
-    - type: play-sound
-      sound: minecraft:entity.warden.heartbeat
-      pitch: 0.7
-    - type: wait
-      duration: 1s
-    - type: title
-      title: "<red>Danger"
-      subtitle: "<gray>Prepare yourself"
+    inputs: {}
+    outputs: {}
+    nodes:
+      heartbeat:
+        type: play-sound
+        sound: minecraft:entity.warden.heartbeat
+        pitch: 0.7
+      pause:
+        type: wait
+        duration: 1s
+      warning:
+        type: title
+        title: "<red>Danger"
+        subtitle: "<gray>Prepare yourself"
+    connections:
+      enter: { from: $input.exec, to: heartbeat.exec }
+      after-heartbeat: { from: heartbeat.success, to: pause.exec }
+      after-pause: { from: pause.success, to: warning.exec }
+      leave: { from: warning.success, to: $output.exec }

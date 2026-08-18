@@ -17,9 +17,9 @@ class EditorContentPublisherTest {
     @TempDir Path live;
 
     @Test void revalidatesBacksUpAndActivatesWithoutReserializingYaml() throws Exception {
-        String original = "# original comment\nscripts: {}\n";
+        String original = "# original comment\ncontent-version: 2\nscripts: {}\n";
         Files.writeString(live.resolve("scripts.yml"), original);
-        String candidate = "# candidate comment\nscripts:\n  hello: []\n";
+        String candidate = graph("# candidate comment\n", "hello");
         PublishProject project = project(original, candidate);
         AtomicBoolean activated = new AtomicBoolean();
 
@@ -35,9 +35,9 @@ class EditorContentPublisherTest {
     }
 
     @Test void restoresExactFilesWhenRuntimeActivationFails() throws Exception {
-        String original = "# retained verbatim\nscripts: {}\n";
+        String original = "# retained verbatim\ncontent-version: 2\nscripts: {}\n";
         Files.writeString(live.resolve("scripts.yml"), original);
-        PublishProject project = project(original, "scripts:\n  changed: []\n");
+        PublishProject project = project(original, graph("", "changed"));
 
         PublishApplyResult result = EditorContentPublisher.publish(live, project, Duration.ZERO, null,
                 registry -> { throw new IllegalStateException("runtime swap failed"); });
@@ -48,7 +48,7 @@ class EditorContentPublisherTest {
     }
 
     @Test void explicitRollbackVerifiesManifestRevalidatesAndCreatesSafetyBackup() throws Exception {
-        String original = "# original\nscripts: {}\n", changed = "# published\nscripts: {new: []}\n";
+        String original = "# original\ncontent-version: 2\nscripts: {}\n", changed = graph("# published\n", "new");
         Files.writeString(live.resolve("scripts.yml"), original);
         PublishProject publish = project(original, changed);
         PublishApplyResult applied = EditorContentPublisher.publish(live, publish, Duration.ZERO, null, registry -> {});
@@ -65,8 +65,8 @@ class EditorContentPublisherTest {
     }
 
     @Test void rejectsStaleBaseBeforeCreatingBackup() throws Exception {
-        Files.writeString(live.resolve("scripts.yml"), "scripts: {}\n");
-        ContentFile candidate = file("scripts.yml", "scripts: {new: []}\n");
+        Files.writeString(live.resolve("scripts.yml"), "content-version: 2\nscripts: {}\n");
+        ContentFile candidate = file("scripts.yml", graph("", "new"));
         PublishProject project = new PublishProject(Protocol.VERSION, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
                 EditorScope.SCRIPTS, "0".repeat(64), ContentProjectRevision.compute(List.of(candidate)), List.of(candidate));
 
@@ -85,5 +85,8 @@ class EditorContentPublisherTest {
     private static ContentFile file(String path, String content) throws Exception {
         return new ContentFile(path, HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                 .digest(content.getBytes(StandardCharsets.UTF_8))), content);
+    }
+    private static String graph(String comment,String id) {
+        return comment+"content-version: 2\nscripts:\n  "+id+":\n    inputs: {}\n    outputs: {}\n    nodes:\n      pause: { type: wait, duration: 1ms }\n    connections:\n      enter: { from: $input.exec, to: pause.exec }\n      leave: { from: pause.success, to: $output.exec }\n";
     }
 }

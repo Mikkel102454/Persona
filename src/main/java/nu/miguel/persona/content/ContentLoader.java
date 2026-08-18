@@ -4,6 +4,7 @@ import nu.miguel.persona.api.*;
 import nu.miguel.persona.behavior.BehaviorDefinition;
 import nu.miguel.persona.behavior.BehaviorLoader;
 import nu.miguel.persona.behavior.BehaviorScope;
+import nu.miguel.persona.script.ScriptDefinition;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
@@ -35,14 +36,14 @@ public final class ContentLoader {
     public Content.Registry load() throws ContentException {
         errors.clear();sources.clear();
         if(new File(root,"effects.yml").isFile())errors.add("effects.yml:1:1: obsolete effects.yml"+MIGRATION);
-        Map<String,List<Step>> scripts=loadScripts();
+        Map<String,ScriptDefinition> scripts=loadScripts();
         BehaviorLoader.Candidate behaviorCandidate=new BehaviorLoader(root,api).loadCandidate();errors.addAll(behaviorCandidate.errors());behaviorSources=behaviorCandidate.sources();Map<String,BehaviorDefinition> behaviors=behaviorCandidate.definitions();
         Map<String,Npc> npcs=loadDirectory("npcs",this::npc);Map<String,Dialogue> dialogues=loadDirectory("dialogues",this::dialogue);Map<String,Quest> quests=loadDirectory("quests",this::quest);
         validate(npcs,dialogues,quests,scripts,behaviors);if(!errors.isEmpty())throw new ContentException(errors);
         return new Content.Registry(Map.copyOf(npcs),Map.copyOf(dialogues),Map.copyOf(quests),Map.copyOf(scripts),behaviors);
     }
 
-    private Map<String,List<Step>> loadScripts(){File file=new File(root,"scripts.yml");if(!file.isFile())return Map.of();source="scripts.yml";document=Validation.Source.read(root,file);try{YamlConfiguration y=yaml(file);Validation.keys(y,Set.of("content-version","scripts"));ContentFormat.validate(y,document);ConfigurationSection s=y.getConfigurationSection("scripts");if(s==null){error("missing scripts section");return Map.of();}Map<String,List<Step>> out=new LinkedHashMap<>();for(String id:s.getKeys(false))try{out.put(id,steps(s.get(id),"script "+id));}catch(RuntimeException e){error(e);}return out;}catch(Exception e){error(e);return Map.of();}}
+    private Map<String,ScriptDefinition> loadScripts(){File file=new File(root,"scripts.yml");if(!file.isFile())return Map.of();source="scripts.yml";document=Validation.Source.read(root,file);try{YamlConfiguration y=yaml(file);Validation.keys(y,Set.of("content-version","scripts"));Object version=y.get("content-version");if(!(version instanceof Number n)||n.intValue()!=2||n.doubleValue()!=2)throw new IllegalArgumentException("scripts.yml requires content-version: 2; list-form/format-1 reusable scripts require manual migration (see SCRIPT_FORMAT_2_MIGRATION.md)");ConfigurationSection s=y.getConfigurationSection("scripts");if(s==null){error("missing scripts section");return Map.of();}return new ScriptDefinitionLoader(api).parse(s);}catch(Exception e){error(e);return Map.of();}}
     private <T> Map<String,T> loadDirectory(String dir,Function<ConfigurationSection,T> parser){File folder=new File(root,dir);if(!folder.exists()&&!folder.mkdirs())errors.add(dir+":1:1: cannot create directory");Map<String,T> out=new LinkedHashMap<>();Map<String,String> declarations=new HashMap<>();File[] files=folder.listFiles(f->f.isFile()&&(f.getName().endsWith(".yml")||f.getName().endsWith(".yaml")));if(files==null)return out;Arrays.sort(files,Comparator.comparing(File::getName));for(File f:files){source=dir+"/"+f.getName();document=Validation.Source.read(root,f);try{YamlConfiguration yaml=yaml(f);ContentFormat.validate(yaml,document);T value=parser.apply(yaml);sources.put(value,source);String id=value instanceof Npc n?n.id():value instanceof Dialogue d?d.id():((Quest)value).id();if(out.putIfAbsent(id,value)!=null)throw new IllegalArgumentException("conflicting "+dir.substring(0,dir.length()-1)+" ID "+id+"; first declared at "+declarations.get(id));declarations.put(id,document.at("id","declaration").replace(": declaration",""));}catch(Exception e){error(e);}}return out;}
 
     private static YamlConfiguration yaml(File file)throws Exception{YamlConfiguration yaml=new YamlConfiguration();yaml.load(file);return yaml;}
@@ -63,7 +64,7 @@ public final class ContentLoader {
         case "goto"->{Validation.keys(m,Set.of("type","node","dialogue"));String node=str(m,"node"),dialogue=str(m,"dialogue");if(node==null&&dialogue==null)throw new IllegalArgumentException("goto needs node or dialogue");yield new Goto(node,dialogue);}
         case "end-dialogue"->{Validation.keys(m,Set.of("type"));yield new EndDialogue();}case "stop"->{Validation.keys(m,Set.of("type"));yield new Stop();}case "wait"->{Validation.keys(m,Set.of("type","duration"));yield new Wait(Durations.parse(required(m.get("duration"),"wait duration")));}
         case "random"->{Validation.keys(m,Set.of("type","options"));if(!(m.get("options") instanceof List<?> list))throw new IllegalArgumentException("random options must be a list");List<WeightedScript> options=new ArrayList<>();for(Object raw:list){Map<?,?> o=asMap(raw);Validation.keys(o,Set.of("weight","script"));options.add(new WeightedScript(positive(integer(o,"weight",1),"weight"),steps(o.get("script"),"random script")));}if(options.isEmpty())throw new IllegalArgumentException("random needs options");yield new RandomStep(List.copyOf(options));}
-        case "run-script"->{Validation.keys(m,Set.of("type","script"));yield new RunScript(required(str(m,"script"),"script name"));}
+        case "run-script"->{Validation.keys(m,Set.of("type","script","inputs"));if(!m.containsKey("inputs"))throw new IllegalArgumentException("run-script requires an inputs mapping, even when empty");Object rawInputs=m.get("inputs");if(!(rawInputs instanceof Map<?,?>)&&!(rawInputs instanceof ConfigurationSection))throw new IllegalArgumentException("run-script inputs must be a mapping");yield new RunScript(required(str(m,"script"),"script name"),stringMap(asMap(rawInputs)));}
         default->{String key=PersonaApi.canonical(type);if(api!=null&&!api.registeredTypes(ExpansionTypes.Command.class).contains(key))throw new IllegalArgumentException("unavailable command type "+key);if(api==null&&(type.contains(":")||!BUILTIN_COMMANDS.contains(type)))throw new IllegalArgumentException("unavailable command type "+key);if(!type.contains(":")){Set<String> keys=new LinkedHashSet<>(commandOptionKeys(type));keys.addAll(Set.of("type","on-success","on-failure"));Validation.keys(m,keys);}Map<String,Object> data=stringMap(m);data.keySet().removeAll(Set.of("type","on-success","on-failure"));if(api!=null&&type.contains(":")){ExpansionTypes.Command handler=api.handler(ExpansionTypes.Command.class,key).orElseThrow();data=new LinkedHashMap<>(handler.parse(Map.copyOf(data)));api.validateEditorData(handler,data,"command "+key);}validateBuiltinYaml(type,data);yield new Command(key,Map.copyOf(data),steps(m.get("on-success"),"on-success"),steps(m.get("on-failure"),"on-failure"));}
     };}
     public static Set<String> commandOptionKeys(String type){return switch(type){case "start-quest","finish-quest"->Set.of("quest");case "deliver-items"->Set.of("quest","objective");case "set-flag"->Set.of("flag","value");case "set-variable"->Set.of("variable","name","value","operation");case "message","action-bar","broadcast","npc-speak"->Set.of("text","audience","radius","location");case "title"->Set.of("title","subtitle","fade-in","stay","fade-out","audience","radius","location");case "play-sound"->Set.of("sound","volume","pitch","audience","radius","location");case "particle"->Set.of("particle","count","offset-x","offset-y","offset-z","extra","audience","radius","location");case "give-item","take-item"->Set.of("material","amount");case "give-experience"->Set.of("amount");case "run-command"->Set.of("command","as");case "teleport","lightning-effect","npc-move"->Set.of("location");case "potion-effect"->Set.of("effect","duration","amplifier","ambient","particles");case "spawn-entity"->Set.of("entity","location");case "set-block"->Set.of("material","location");case "npc-animation"->Set.of("animation");default->Set.of();};}
@@ -89,15 +90,261 @@ public final class ContentLoader {
     }
     private List<Condition> conditionChildren(Map<?,?> m){Object raw=m.get("conditions");if(!(raw instanceof List<?> list))throw new IllegalArgumentException("composite condition needs conditions list");return list.stream().map(this::condition).toList();}
 
-    private void validate(Map<String,Npc> npcs,Map<String,Dialogue> dialogues,Map<String,Quest> quests,Map<String,List<Step>> scripts,Map<String,BehaviorDefinition> behaviors){for(Npc n:npcs.values()){select(n);if(n.sharedBehavior()!=null){BehaviorDefinition b=behaviors.get(n.sharedBehavior());if(b==null)error(n.id()+" references missing shared behavior "+n.sharedBehavior());else if(b.scope()!=BehaviorScope.SHARED)error(n.id()+" shared behavior has player scope");}if(n.playerBehavior()!=null){BehaviorDefinition b=behaviors.get(n.playerBehavior());if(b==null)error(n.id()+" references missing player behavior "+n.playerBehavior());else if(b.scope()!=BehaviorScope.PLAYER)error(n.id()+" player behavior has shared scope");}for(String behaviorId:attachedBehaviors(n,behaviors))for(var node:behaviors.get(behaviorId).nodes().values())for(String key:Set.of("anchor","source","destination")){Object anchor=node.options().get(key);if(anchor!=null&&!n.anchors().containsKey(String.valueOf(anchor)))error(n.id()+" behavior "+behaviorId+" references missing "+key+" anchor "+anchor);}for(DialogueRegistration r:n.dialogues()){if(!dialogues.containsKey(r.dialogueId()))error(n.id()+" references missing dialogue "+r.dialogueId());validateCondition(r.condition(),quests);}validateSteps(n.onInteract(),null,dialogues,quests,scripts,false);validateSteps(n.onNoDialogue(),null,dialogues,quests,scripts,false);}for(Dialogue d:dialogues.values()){select(d);if(!d.nodes().containsKey(d.start()))error(d.id()+" has missing start node "+d.start());for(Node n:d.nodes().values())validateSteps(n.script(),d,dialogues,quests,scripts,true);}for(Quest q:quests.values()){select(q);validateCondition(q.requirements(),quests);Set<String> phaseIds=new HashSet<>();for(Phase p:q.phases())if(!phaseIds.add(p.id()))error(q.id()+" has duplicate phase "+p.id());for(Phase p:q.phases()){if(p.objectives().isEmpty())error(q.id()+" phase "+p.id()+" has no objectives");Set<String> ids=new HashSet<>();for(Objective o:p.objectives()){if(!ids.add(o.id()))error(q.id()+" phase "+p.id()+" has duplicate objective "+o.id());if(o.npc()!=null&&!npcs.containsKey(o.npc()))error(q.id()+" references missing NPC "+o.npc());validateSteps(o.onStart(),null,dialogues,quests,scripts,false);validateSteps(o.onProgress().script(),null,dialogues,quests,scripts,false);validateSteps(o.onComplete(),null,dialogues,quests,scripts,false);}for(PhaseBranch b:p.branches()){validateCondition(b.condition(),quests);if(!b.nextPhase().equals("end")&&!phaseIds.contains(b.nextPhase()))error(q.id()+" branch references missing phase "+b.nextPhase());}validateSteps(p.onStart(),null,dialogues,quests,scripts,false);validateSteps(p.onComplete(),null,dialogues,quests,scripts,false);}validateSteps(q.onStart(),null,dialogues,quests,scripts,false);validateSteps(q.onComplete(),null,dialogues,quests,scripts,false);validateSteps(q.onFail(),null,dialogues,quests,scripts,false);validateSteps(q.onReset(),null,dialogues,quests,scripts,false);}validateBehaviorLeaves(behaviors,quests,scripts);selectFile("scripts.yml");for(List<Step> script:scripts.values())validateSteps(script,null,dialogues,quests,scripts,true);detectRecursion(scripts);}
+    private void validate(Map<String, Npc> npcs,
+                          Map<String, Dialogue> dialogues,
+                          Map<String, Quest> quests,
+                          Map<String, ScriptDefinition> scripts,
+                          Map<String, BehaviorDefinition> behaviors) {
+      for (Npc n : npcs.values()) {
+        select(n);
+        if (n.sharedBehavior() != null) {
+          BehaviorDefinition b = behaviors.get(n.sharedBehavior());
+          if (b == null)
+            error(n.id() + " references missing shared behavior " +
+                  n.sharedBehavior());
+          else if (b.scope() != BehaviorScope.SHARED)
+            error(n.id() + " shared behavior has player scope");
+        }
+        if (n.playerBehavior() != null) {
+          BehaviorDefinition b = behaviors.get(n.playerBehavior());
+          if (b == null)
+            error(n.id() + " references missing player behavior " +
+                  n.playerBehavior());
+          else if (b.scope() != BehaviorScope.PLAYER)
+            error(n.id() + " player behavior has shared scope");
+        }
+        for (String behaviorId : attachedBehaviors(n, behaviors))
+          for (var node : behaviors.get(behaviorId).nodes().values())
+            for (String key : Set.of("anchor", "source", "destination")) {
+              Object anchor = node.options().get(key);
+              if (anchor != null &&
+                  !n.anchors().containsKey(String.valueOf(anchor)))
+                error(n.id() + " behavior " + behaviorId +
+                      " references missing " + key + " anchor " + anchor);
+            }
+        for (DialogueRegistration r : n.dialogues()) {
+          if (!dialogues.containsKey(r.dialogueId()))
+            error(n.id() + " references missing dialogue " + r.dialogueId());
+          validateCondition(r.condition(), quests);
+        }
+        validateSteps(n.onInteract(), null, dialogues, quests, scripts, false);
+        validateSteps(n.onNoDialogue(), null, dialogues, quests, scripts,
+                      false);
+      }
+      for (Dialogue d : dialogues.values()) {
+        select(d);
+        if (!d.nodes().containsKey(d.start()))
+          error(d.id() + " has missing start node " + d.start());
+        for (Node n : d.nodes().values())
+          validateSteps(n.script(), d, dialogues, quests, scripts, true);
+      }
+      for (Quest q : quests.values()) {
+        select(q);
+        validateCondition(q.requirements(), quests);
+        Set<String> phaseIds = new HashSet<>();
+        for (Phase p : q.phases())
+          if (!phaseIds.add(p.id()))
+            error(q.id() + " has duplicate phase " + p.id());
+        for (Phase p : q.phases()) {
+          if (p.objectives().isEmpty())
+            error(q.id() + " phase " + p.id() + " has no objectives");
+          Set<String> ids = new HashSet<>();
+          for (Objective o : p.objectives()) {
+            if (!ids.add(o.id()))
+              error(q.id() + " phase " + p.id() + " has duplicate objective " +
+                    o.id());
+            if (o.npc() != null && !npcs.containsKey(o.npc()))
+              error(q.id() + " references missing NPC " + o.npc());
+            validateSteps(o.onStart(), null, dialogues, quests, scripts, false);
+            validateSteps(o.onProgress().script(), null, dialogues, quests,
+                          scripts, false);
+            validateSteps(o.onComplete(), null, dialogues, quests, scripts,
+                          false);
+          }
+          for (PhaseBranch b : p.branches()) {
+            validateCondition(b.condition(), quests);
+            if (!b.nextPhase().equals("end") &&
+                !phaseIds.contains(b.nextPhase()))
+              error(q.id() + " branch references missing phase " +
+                    b.nextPhase());
+          }
+          validateSteps(p.onStart(), null, dialogues, quests, scripts, false);
+          validateSteps(p.onComplete(), null, dialogues, quests, scripts,
+                        false);
+        }
+        validateSteps(q.onStart(), null, dialogues, quests, scripts, false);
+        validateSteps(q.onComplete(), null, dialogues, quests, scripts, false);
+        validateSteps(q.onFail(), null, dialogues, quests, scripts, false);
+        validateSteps(q.onReset(), null, dialogues, quests, scripts, false);
+      }
+      validateBehaviorLeaves(behaviors, quests, scripts);
+      selectFile("scripts.yml");
+    }
 
-    private Set<String> attachedBehaviors(Npc npc,Map<String,BehaviorDefinition> all){Set<String> out=new LinkedHashSet<>();collectBehavior(npc.sharedBehavior(),all,out);collectBehavior(npc.playerBehavior(),all,out);out.retainAll(all.keySet());return out;}private void collectBehavior(String id,Map<String,BehaviorDefinition> all,Set<String> out){if(id==null||!out.add(id))return;BehaviorDefinition b=all.get(id);if(b!=null)for(var n:b.nodes().values())collectBehavior(n.subtree(),all,out);}
-    private void validateBehaviorLeaves(Map<String,BehaviorDefinition> behaviors,Map<String,Quest> quests,Map<String,List<Step>> scripts){for(BehaviorDefinition behavior:behaviors.values()){source=behaviorSources.getOrDefault(behavior.id(),"behaviors");document=null;for(var node:behavior.nodes().values())try{String type=String.valueOf(node.options().get(node.type().equals("condition")?"condition":"action"));if(node.type().equals("condition")&&!Set.of("memory","event").contains(type)&&!type.contains(":")){Map<String,Object> map=new LinkedHashMap<>(node.options());map.put("type",type);map.remove("condition");validateCondition(condition(map),quests);}else if(node.type().equals("action")&&type.equals("script")){String name=String.valueOf(node.options().get("script"));if(!scripts.containsKey(name))error("behavior "+behavior.id()+" action "+node.id()+" references missing script "+name);}else if(node.type().equals("action")&&type.equals("command")){Map<String,Object> map=new LinkedHashMap<>(node.options());map.put("type",map.remove("command"));map.remove("action");Step parsed=step(map);if(parsed instanceof Command command)validateCommand(command,quests);}}catch(RuntimeException e){error("behavior "+behavior.id()+" node "+node.id()+": "+e.getMessage());}}}
-    private void validateSteps(List<Step> values,Dialogue owner,Map<String,Dialogue> dialogues,Map<String,Quest> quests,Map<String,List<Step>> scripts,boolean dialogue){validateSteps(values,owner,dialogues,quests,scripts,dialogue,new HashSet<>());}
-    private void validateSteps(List<Step> values,Dialogue owner,Map<String,Dialogue> dialogues,Map<String,Quest> quests,Map<String,List<Step>> scripts,boolean dialogue,Set<String> reusableStack){for(Step s:values){if(s instanceof If x){validateCondition(x.when(),quests);validateSteps(x.thenScript(),owner,dialogues,quests,scripts,dialogue,reusableStack);validateSteps(x.elseScript(),owner,dialogues,quests,scripts,dialogue,reusableStack);}else if(s instanceof ChoiceStep x){if(!dialogue)error("choice is only valid in dialogue scripts");for(ChoiceOption o:x.options()){validateCondition(o.when(),quests);validateSteps(o.script(),owner,dialogues,quests,scripts,dialogue,reusableStack);}}else if(s instanceof Goto g){if(!dialogue)error("goto is only valid in dialogue scripts");Dialogue target=g.dialogue()==null?owner:dialogues.get(g.dialogue());if(g.dialogue()!=null&&target==null)error("goto references missing dialogue "+g.dialogue());if(target!=null&&g.node()!=null&&!target.nodes().containsKey(g.node()))error("goto references missing node "+g.node());}else if(s instanceof EndDialogue&&!dialogue)error("end-dialogue is only valid in dialogue scripts");else if(s instanceof RunScript r){if(!scripts.containsKey(r.script()))error("run-script references missing script "+r.script());else if(reusableStack.add(r.script())){validateSteps(scripts.get(r.script()),owner,dialogues,quests,scripts,dialogue,reusableStack);reusableStack.remove(r.script());}}else if(s instanceof RandomStep r)r.options().forEach(o->validateSteps(o.script(),owner,dialogues,quests,scripts,dialogue,reusableStack));else if(s instanceof Command c){validateCommand(c,quests);validateSteps(c.onSuccess(),owner,dialogues,quests,scripts,dialogue,reusableStack);validateSteps(c.onFailure(),owner,dialogues,quests,scripts,dialogue,reusableStack);}}}
-    private void validateCommand(Command c,Map<String,Quest> quests){String type=c.type();if(type.equals("persona:start-quest")||type.equals("persona:finish-quest")){String q=String.valueOf(c.options().get("quest"));if(!quests.containsKey(q))error(type+" references missing quest "+q);}if(type.equals("persona:deliver-items")){String q=String.valueOf(c.options().get("quest")),o=String.valueOf(c.options().get("objective"));Quest quest=quests.get(q);if(quest==null)error(type+" references missing quest "+q);else if(quest.phases().stream().flatMap(p->p.objectives().stream()).noneMatch(x->x.id().equals(o)&&x.type()==ObjectiveType.DELIVER_ITEM))error("deliver-items references missing delivery objective "+q+"/"+o);}}
-    private void validateCondition(Condition c,Map<String,Quest> quests){if(c instanceof All a)a.conditions().forEach(x->validateCondition(x,quests));else if(c instanceof Any a)a.conditions().forEach(x->validateCondition(x,quests));else if(c instanceof Not n)validateCondition(n.condition(),quests);else if(c instanceof QuestStateCondition q&&!quests.containsKey(q.quest()))error("condition references missing quest "+q.quest());}
-    private void detectRecursion(Map<String,List<Step>> scripts){for(String root:scripts.keySet())visit(root,scripts,new LinkedHashSet<>());}private void visit(String name,Map<String,List<Step>> scripts,LinkedHashSet<String> path){if(!path.add(name)){error("recursive reusable script: "+String.join(" -> ",path)+" -> "+name);return;}for(String child:references(scripts.getOrDefault(name,List.of())))visit(child,scripts,new LinkedHashSet<>(path));}private List<String> references(List<Step> steps){List<String> out=new ArrayList<>();for(Step s:steps){if(s instanceof RunScript r)out.add(r.script());else if(s instanceof If i){out.addAll(references(i.thenScript()));out.addAll(references(i.elseScript()));}else if(s instanceof ChoiceStep c)c.options().forEach(o->out.addAll(references(o.script())));else if(s instanceof RandomStep r)r.options().forEach(o->out.addAll(references(o.script())));else if(s instanceof Command c){out.addAll(references(c.onSuccess()));out.addAll(references(c.onFailure()));}}return out;}
+    private Set<String> attachedBehaviors(Npc npc,
+                                          Map<String, BehaviorDefinition> all) {
+      Set<String> out = new LinkedHashSet<>();
+      collectBehavior(npc.sharedBehavior(), all, out);
+      collectBehavior(npc.playerBehavior(), all, out);
+      out.retainAll(all.keySet());
+      return out;
+    }
+    private void collectBehavior(String id, Map<String, BehaviorDefinition> all,
+                                 Set<String> out) {
+      if (id == null || !out.add(id))
+        return;
+      BehaviorDefinition b = all.get(id);
+      if (b != null)
+        for (var n : b.nodes().values())
+          collectBehavior(n.subtree(), all, out);
+    }
+    private void
+    validateBehaviorLeaves(Map<String, BehaviorDefinition> behaviors,
+                           Map<String, Quest> quests,
+                           Map<String, ScriptDefinition> scripts) {
+      for (BehaviorDefinition behavior : behaviors.values()) {
+        source = behaviorSources.getOrDefault(behavior.id(), "behaviors");
+        document = null;
+        for (var node : behavior.nodes().values())
+          try {
+            String type = String.valueOf(node.options().get(
+                node.type().equals("condition") ? "condition" : "action"));
+            if (node.type().equals("condition") &&
+                !Set.of("memory", "event").contains(type) &&
+                !type.contains(":")) {
+              Map<String, Object> map = new LinkedHashMap<>(node.options());
+              map.put("type", type);
+              map.remove("condition");
+              validateCondition(condition(map), quests);
+            } else if (node.type().equals("action") && type.equals("script")) {
+              String name = String.valueOf(node.options().get("script"));
+              if (!scripts.containsKey(name))
+                error("behavior " + behavior.id() + " action " + node.id() +
+                      " references missing script " + name);
+              else for (var input : scripts.get(name).inputs().entrySet())
+                if (input.getValue().required() && input.getValue().defaultValue() == null)
+                  error("behavior " + behavior.id() + " action " + node.id() +
+                        " cannot call script " + name + " because required input " +
+                        input.getKey() + " has no default");
+            } else if (node.type().equals("action") && type.equals("command")) {
+              Map<String, Object> map = new LinkedHashMap<>(node.options());
+              map.put("type", map.remove("command"));
+              map.remove("action");
+              Step parsed = step(map);
+              if (parsed instanceof Command command)
+                validateCommand(command, quests);
+            }
+          } catch (RuntimeException e) {
+            error("behavior " + behavior.id() + " node " + node.id() + ": " +
+                  e.getMessage());
+          }
+      }
+    }
+    private void validateSteps(List<Step> values, Dialogue owner,
+                               Map<String, Dialogue> dialogues,
+                               Map<String, Quest> quests,
+                               Map<String, ScriptDefinition> scripts,
+                               boolean dialogue) {
+      validateSteps(values, owner, dialogues, quests, scripts, dialogue,
+                    new HashSet<>());
+    }
+    private void validateSteps(List<Step> values, Dialogue owner,
+                               Map<String, Dialogue> dialogues,
+                               Map<String, Quest> quests,
+                               Map<String, ScriptDefinition> scripts,
+                               boolean dialogue, Set<String> reusableStack) {
+      for (Step s : values) {
+        if (s instanceof If x) {
+          validateCondition(x.when(), quests);
+          validateSteps(x.thenScript(), owner, dialogues, quests, scripts,
+                        dialogue, reusableStack);
+          validateSteps(x.elseScript(), owner, dialogues, quests, scripts,
+                        dialogue, reusableStack);
+        } else if (s instanceof ChoiceStep x) {
+          if (!dialogue)
+            error("choice is only valid in dialogue scripts");
+          for (ChoiceOption o : x.options()) {
+            validateCondition(o.when(), quests);
+            validateSteps(o.script(), owner, dialogues, quests, scripts,
+                          dialogue, reusableStack);
+          }
+        } else if (s instanceof Goto g) {
+          if (!dialogue)
+            error("goto is only valid in dialogue scripts");
+          Dialogue target =
+              g.dialogue() == null ? owner : dialogues.get(g.dialogue());
+          if (g.dialogue() != null && target == null)
+            error("goto references missing dialogue " + g.dialogue());
+          if (target != null && g.node() != null &&
+              !target.nodes().containsKey(g.node()))
+            error("goto references missing node " + g.node());
+        } else if (s instanceof EndDialogue && !dialogue)
+          error("end-dialogue is only valid in dialogue scripts");
+        else if (s instanceof RunScript r) {
+          if (!scripts.containsKey(r.script()))
+            error("run-script references missing script " + r.script());
+          else validateCall(r,scripts.get(r.script()));
+        } else if (s instanceof RandomStep r)
+          r.options().forEach(o
+                              -> validateSteps(o.script(), owner, dialogues,
+                                               quests, scripts, dialogue,
+                                               reusableStack));
+        else if (s instanceof Command c) {
+          validateCommand(c, quests);
+          validateSteps(c.onSuccess(), owner, dialogues, quests, scripts,
+                        dialogue, reusableStack);
+          validateSteps(c.onFailure(), owner, dialogues, quests, scripts,
+                        dialogue, reusableStack);
+        }
+      }
+    }
+    private void validateCommand(Command c, Map<String, Quest> quests) {
+      String type = c.type();
+      if (type.equals("persona:start-quest") ||
+          type.equals("persona:finish-quest")) {
+        String q = String.valueOf(c.options().get("quest"));
+        if (!quests.containsKey(q))
+          error(type + " references missing quest " + q);
+      }
+      if (type.equals("persona:deliver-items")) {
+        String q = String.valueOf(c.options().get("quest")),
+               o = String.valueOf(c.options().get("objective"));
+        Quest quest = quests.get(q);
+        if (quest == null)
+          error(type + " references missing quest " + q);
+        else if (quest.phases()
+                     .stream()
+                     .flatMap(p -> p.objectives().stream())
+                     .noneMatch(x
+                                -> x.id().equals(o) &&
+                                       x.type() == ObjectiveType.DELIVER_ITEM))
+          error("deliver-items references missing delivery objective " + q +
+                "/" + o);
+      }
+    }
+    private void validateCondition(Condition c, Map<String, Quest> quests) {
+      if (c instanceof All a)
+        a.conditions().forEach(x -> validateCondition(x, quests));
+      else if (c instanceof Any a)
+        a.conditions().forEach(x -> validateCondition(x, quests));
+      else if (c instanceof Not n)
+        validateCondition(n.condition(), quests);
+      else if (c instanceof QuestStateCondition q &&
+               !quests.containsKey(q.quest()))
+        error("condition references missing quest " + q.quest());
+    }
+    private void validateCall(RunScript call, ScriptDefinition target) {
+      for (String name : call.inputs().keySet())
+        if (!target.inputs().containsKey(name))
+          error("run-script " + call.script() + " has unknown input " + name);
+        else try { ScriptDefinitionLoader.validateLiteral(target.inputs().get(name).type(),call.inputs().get(name),"run-script "+call.script()+" input "+name); }
+          catch(IllegalArgumentException failure){error(failure.getMessage());}
+      for (var parameter : target.inputs().entrySet())
+        if (parameter.getValue().required() &&
+            !call.inputs().containsKey(parameter.getKey()))
+          error("run-script " + call.script() + " is missing required input " +
+                parameter.getKey());
+    }
 
     private String custom(String raw,Class<?> category){if(api==null||!raw.contains(":"))throw new IllegalArgumentException("unknown "+category.getSimpleName().toLowerCase(Locale.ROOT)+" type "+raw);String key=PersonaApi.canonical(raw);if(!api.registeredTypes(category).contains(key))throw new IllegalArgumentException("unavailable namespaced type "+key);return key;}
     private Material material(String raw){Material m=materials.apply(required(raw,"material"));if(m==null)throw new IllegalArgumentException("invalid material "+raw);return m;}private EntityType entity(String raw){EntityType e=entities.apply(required(raw,"entity"));if(e==null)throw new IllegalArgumentException("invalid entity type "+raw);return e;}private static Material bukkitMaterial(String raw){Material m=Material.matchMaterial(raw);return m!=null&&(m.isItem()||m.isBlock())?m:null;}private static EntityType bukkitEntity(String raw){NamespacedKey k=NamespacedKey.fromString(raw);return k==null?null:Registry.ENTITY_TYPE.get(k);}
