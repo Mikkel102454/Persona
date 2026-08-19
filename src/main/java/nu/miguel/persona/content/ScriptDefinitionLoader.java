@@ -177,6 +177,13 @@ final class ScriptDefinitionLoader {
         if(type.equals("integer-to-number")){out.put("value",Port.requiredData(false,ValueType.INTEGER));out.put("result",Port.data(true,ValueType.NUMBER));return out;}
         if(type.equals("string-to-text")){out.put("value",Port.requiredData(false,ValueType.STRING));out.put("result",Port.data(true,ValueType.TEXT));return out;}
         if(type.equals("to-string")){ValueType source=valueType(required(node.options().get("value-type"),"node "+id+" value-type"),"node "+id+" value-type");if(!source.domainId()&&!source.id().contains(":")&&source!=ValueType.BOOLEAN&&source!=ValueType.INTEGER&&source!=ValueType.NUMBER)throw new IllegalArgumentException("node "+id+" to-string does not allow "+source.id());out.put("value",Port.requiredData(false,source));out.put("result",Port.data(true,ValueType.STRING));return out;}
+        if(Set.of("equals","not-equals","greater-than","greater-than-or-equal","less-than","less-than-or-equal").contains(type)){
+            ValueType operand=valueType(required(node.options().get("value-type"),"node "+id+" value-type"),"node "+id+" value-type");
+            if(!Set.of("equals","not-equals").contains(type)&&!Set.of(ValueType.INTEGER,ValueType.NUMBER,ValueType.DURATION,ValueType.STRING,ValueType.TEXT).contains(operand))throw new IllegalArgumentException("node "+id+" "+type+" requires ordered operands");
+            out.put("left",Port.requiredData(false,operand));out.put("right",Port.requiredData(false,operand));out.put("result",Port.data(true,ValueType.BOOLEAN));return out;
+        }
+        if(Set.of("and","or").contains(type)){out.put("left",Port.requiredData(false,ValueType.BOOLEAN));out.put("right",Port.requiredData(false,ValueType.BOOLEAN));out.put("result",Port.data(true,ValueType.BOOLEAN));return out;}
+        if(type.equals("not")){out.put("value",Port.requiredData(false,ValueType.BOOLEAN));out.put("result",Port.data(true,ValueType.BOOLEAN));return out;}
         if(type.startsWith("get-player-")||type.startsWith("get-global-npc-memory")||type.startsWith("get-player-npc-memory")){
             ValueType valueType=memoryType(id,node,type);out.put("value",Port.data(true,valueType));return out;
         }
@@ -208,7 +215,9 @@ final class ScriptDefinitionLoader {
         }
         return out;
     }
-    private static boolean pure(Node node){return node==null||Set.of("value","get-variable","integer-to-number","string-to-text","to-string","get-player-flag","get-player-string","get-global-npc-memory","get-player-npc-memory").contains(node.type());}
+    private static boolean pure(Node node){return node==null||Set.of("value","get-variable","integer-to-number","string-to-text","to-string",
+            "equals","not-equals","greater-than","greater-than-or-equal","less-than","less-than-or-equal","and","or","not",
+            "get-player-flag","get-player-string","get-global-npc-memory","get-player-npc-memory").contains(node.type());}
     private ValueType valueType(Object raw,String what){ValueType type=ValueType.parse(raw);ValueType declared=type.list()?type.elementType():type;if(declared.id().contains(":")&&(api==null||!api.scriptValueTypes().contains(declared.id())))throw new IllegalArgumentException(what+" uses undeclared extension value type "+declared.id());return type;}
     private static Variable variable(ScriptDefinition owner,String id,Node node){String name=Objects.toString(required(node.options().get("variable"),"node "+id+" variable"));Variable variable=owner.variables().get(name);if(variable==null)throw new IllegalArgumentException("node "+id+" references undeclared variable "+name);return variable;}
     private ValueType memoryType(String id,Node node,String type){Object raw=node.options().get("value-type");if(type.endsWith("flag"))return ValueType.BOOLEAN;if(type.endsWith("string"))return ValueType.STRING;return valueType(required(raw,"node "+id+" value-type"),"node "+id+" value-type");}

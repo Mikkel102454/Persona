@@ -42,6 +42,33 @@ class ScriptGraphContentLoaderTest {
         assertEquals(2,script.nodes().size());assertEquals(4,script.connections().size());
     }
 
+    @Test void loadsTypedComparisonAndBooleanOperatorNodes() throws Exception {
+        write("operators", """
+                content-version: 2
+                id: operators
+                inputs: {}
+                outputs: { result: { type: boolean, required: true } }
+                variables: {}
+                nodes:
+                  one: { type: value, value-type: integer, value: 1 }
+                  two: { type: value, value-type: integer, value: 2 }
+                  less: { type: less-than, value-type: integer }
+                  truth: { type: value, value-type: boolean, value: true }
+                  either: { type: or }
+                  pause: { type: wait, duration: 1ms }
+                connections:
+                  enter: { from: $input.exec, to: pause.exec }
+                  leave: { from: pause.success, to: $output.exec }
+                  left: { from: one.value, to: less.left }
+                  right: { from: two.value, to: less.right }
+                  comparison: { from: less.result, to: either.left }
+                  literal: { from: truth.value, to: either.right }
+                  result: { from: either.result, to: $output.result }
+                """);
+
+        assertEquals("or", loader().load().scripts().get("operators").nodes().get("either").type());
+    }
+
     @Test void rejectsMonolithicScriptsAndLegacyListHooksWithTargetedMigrationErrors() throws Exception {
         dirs();Files.writeString(root.resolve("scripts.yml"),"content-version: 2\nscripts: {}\n");
         ContentException error=assertThrows(ContentException.class,()->loader().load());

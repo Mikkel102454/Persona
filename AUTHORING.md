@@ -69,6 +69,7 @@ Execution graphs support Sequence, Branch, Switch, Random, Gate, Do Once, Do N, 
 Execution-local variables are declared under `variables` and accessed with `get-variable` and `set-variable`. Persistent nodes cover player flags, player strings, and typed global or player NPC memory. Gate, Do Once, and Do N state is scoped to the NPC instance and optional player, and is cleared on reload or despawn.
 
 Pure value/getter/converter nodes have data pins only. Impure nodes expose execution pins. Required inputs must be connected or have a valid authored default.
+Pure operators include typed `equals`/`not-equals`; ordered integer, number, duration, string, and text `greater-than`, `greater-than-or-equal`, `less-than`, and `less-than-or-equal`; plus boolean `and`, `or`, and `not`. Comparisons declare a `value-type`, accept `left` and `right`, and return a boolean `result`; logical nodes likewise return a boolean `result`.
 
 ## NPCs and events
 

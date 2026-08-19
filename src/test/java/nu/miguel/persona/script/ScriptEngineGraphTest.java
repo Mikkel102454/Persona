@@ -40,6 +40,30 @@ class ScriptEngineGraphTest {
         assertEquals(5L, result.outputs().get("answer"));
     }
 
+    @Test void evaluatesComparisonAndBooleanOperatorNodes() {
+        ScriptDefinition graph = new ScriptDefinition("operators", Boundary.REUSABLE, Map.of(),
+                Map.of("matches", new Parameter(ValueType.BOOLEAN, true, null)),
+                Map.of("matches", new Variable(ValueType.BOOLEAN, false)),
+                Map.of("two", new Node("value", Map.of("value-type", "integer", "value", 2L)),
+                        "three", new Node("value", Map.of("value-type", "integer", "value", 3L)),
+                        "less", new Node("less-than", Map.of("value-type", "integer")),
+                        "truth", new Node("value", Map.of("value-type", "boolean", "value", true)),
+                        "either", new Node("or", Map.of()), "set", new Node("set-variable", Map.of("variable", "matches"))),
+                connections("enter", INPUT, "exec", "set", "exec",
+                        "leave", "set", "success", OUTPUT, "exec",
+                        "left", "two", "value", "less", "left",
+                        "right", "three", "value", "less", "right",
+                        "comparison", "less", "result", "either", "left",
+                        "literal", "truth", "value", "either", "right",
+                        "value", "either", "result", "set", "value",
+                        "result", "set", "result", OUTPUT, "matches"));
+
+        ScriptEngine.ScriptResult result = new ScriptEngine(mock(Main.class)).run(graph, Map.of(), EMPTY)
+                .toCompletableFuture().join();
+
+        assertEquals(Boolean.TRUE, result.outputs().get("matches"));
+    }
+
     @Test void enforcesLoopBudgetAndRecordsLimitWithoutExecutingTheBody() {
         ScriptDefinition graph = new ScriptDefinition("loop-limit", Boundary.REUSABLE, Map.of(), Map.of(), Map.of(),
                 Map.of("loop", new Node("for", Map.of("first", 0L, "last", 10_000L, "step", 1L))),

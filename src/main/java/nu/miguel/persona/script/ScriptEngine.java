@@ -188,7 +188,8 @@ public final class ScriptEngine {
         if (node == null)
           return CompletableFuture.completedFuture(
               ScriptResult.failed(Control.stop()));
-        if (Set.of("value", "integer-to-number", "string-to-text", "to-string")
+        if (Set.of("value", "integer-to-number", "string-to-text", "to-string", "equals", "not-equals",
+                   "greater-than", "greater-than-or-equal", "less-than", "less-than-or-equal", "and", "or", "not")
                 .contains(node.type()))
           return CompletableFuture.completedFuture(
               ScriptResult.failed(Control.stop()));
@@ -482,12 +483,34 @@ public final class ScriptEngine {
             trace(source.node(),"VALUE",Map.of(source.pin(),converted),null);
             return converted;
           }
+          if(Set.of("equals","not-equals","greater-than","greater-than-or-equal","less-than","less-than-or-equal").contains(producer.type())){
+            Object left=value(source.node(),"left",active),right=value(source.node(),"right",active);
+            int ordering=compare(left,right,String.valueOf(producer.options().get("value-type")));boolean result=switch(producer.type()){
+              case "equals"->Objects.equals(left,right);case "not-equals"->!Objects.equals(left,right);
+              case "greater-than"->ordering>0;case "greater-than-or-equal"->ordering>=0;
+              case "less-than"->ordering<0;default->ordering<=0;};
+            values.put(source,result);trace(source.node(),"VALUE",Map.of(source.pin(),result),null);return result;
+          }
+          if(Set.of("and","or").contains(producer.type())){
+            Object left=value(source.node(),"left",active);if(!(left instanceof Boolean first))throw new IllegalStateException(producer.type()+" requires boolean operands");
+            Object right=value(source.node(),"right",active);if(!(right instanceof Boolean second))throw new IllegalStateException(producer.type()+" requires boolean operands");
+            boolean result=producer.type().equals("and")?first&&second:first||second;
+            values.put(source,result);trace(source.node(),"VALUE",Map.of(source.pin(),result),null);return result;
+          }
+          if(producer.type().equals("not")){Object input=value(source.node(),"value",active);if(!(input instanceof Boolean flag))throw new IllegalStateException("not requires a boolean operand");boolean result=!flag;values.put(source,result);trace(source.node(),"VALUE",Map.of(source.pin(),result),null);return result;}
           throw new IllegalStateException("Impure output " + source +
                                           " was read before execution");
         } finally {
           active.remove(source);
         }
       }
+      private static int compare(Object left,Object right,String type){
+        if(type.equals("integer")||type.equals("number")){if(left instanceof Number a&&right instanceof Number b)return Double.compare(a.doubleValue(),b.doubleValue());throw new IllegalStateException("Comparison requires numeric operands");}
+        if(type.equals("duration"))return duration(left).compareTo(duration(right));
+        if(type.equals("string")||type.equals("text"))return String.valueOf(left).compareTo(String.valueOf(right));
+        return 0;
+      }
+      private static java.time.Duration duration(Object value){String raw=String.valueOf(value);if(raw.startsWith("P"))return java.time.Duration.parse(raw);java.util.regex.Matcher match=java.util.regex.Pattern.compile("([0-9]+(?:\\.[0-9]+)?)(ms|s|m|h|d)").matcher(raw);if(!match.matches())throw new IllegalStateException("Comparison requires duration operands");double amount=Double.parseDouble(match.group(1));double millis=amount*switch(match.group(2)){case"ms"->1;case"s"->1000;case"m"->60_000;case"h"->3_600_000;default->86_400_000;};return java.time.Duration.ofMillis(Math.round(millis));}
       private void trace(String node,String status,Map<String,?> values,String detail){
         String instance=Objects.toString(inputs.get("npc-instance"),context.citizensNpc()==null?"":context.citizensNpc().getUniqueId().toString());
         graphTrace(script.id(),node,status,context,values,detail,instance);
