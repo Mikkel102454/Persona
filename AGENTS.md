@@ -22,6 +22,13 @@ Paper plugin providing YAML-authored dialogue, quests, reusable scripts, NPC beh
 - Keep Paper/Citizens work off-thread unless their API explicitly permits it; preserve async script ordering and cancellation.
 - Never edit `build/`, `.gradle/`, `.idea/`, or `run/` as source.
 
+## Test-driven development
+
+- For behavior-changing code, write the smallest meaningful automated test before changing production code.
+- Run that exact test first and confirm it fails for the expected reason. Only then implement the change and rerun the test until it passes; do not weaken or rewrite the test merely to make the implementation pass.
+- Add tests only where they protect meaningful behavior, regressions, contracts, or edge cases. Documentation, formatting, mechanical refactors, and other changes with no behavior to verify do not need tests.
+- During development, run only the narrowest relevant test target. Before finishing, run the smallest affected test set needed to catch integration regressions; do not run unrelated full suites by default.
+
 ## Verify
 
 ```sh
@@ -31,4 +38,3 @@ Paper plugin providing YAML-authored dialogue, quests, reusable scripts, NPC beh
 ```
 
 For one test: `./gradlew test --tests 'fully.qualified.TestName'`. Output: `build/libs/Persona-2.0.0.jar`. The composite build expects sibling `../PersonaBackend`.
-
